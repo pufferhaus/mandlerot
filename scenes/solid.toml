@@ -1,0 +1,26 @@
+name = "solid"
+display_name = "Solid Color"
+
+[[params]]
+slot = 0
+name = "red"
+min = 0.0
+max = 1.0
+default = 1.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "green"
+min = 0.0
+max = 1.0
+default = 0.5
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "blue"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
