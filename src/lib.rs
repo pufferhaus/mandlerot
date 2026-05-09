@@ -11,3 +11,6 @@ pub mod scene;
 pub mod render;
 
 pub mod state;
+
+#[cfg(feature = "desktop")]
+pub mod headless;
