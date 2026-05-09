@@ -12,5 +12,7 @@ pub mod render;
 
 pub mod state;
 
+pub mod hot_reload;
+
 #[cfg(feature = "desktop")]
 pub mod headless;
