@@ -1,3 +1,8 @@
 .superpowers/
 *.swp
 .DS_Store
+
+# Rust
+/target/
+Cargo.lock.bak
+*.rs.bk
