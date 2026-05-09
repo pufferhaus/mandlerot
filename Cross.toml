@@ -1,0 +1,13 @@
+[target.armv7-unknown-linux-gnueabihf]
+pre-build = [
+    "dpkg --add-architecture armhf",
+    "apt-get update",
+    "apt-get install --assume-yes --no-install-recommends libdrm-dev:armhf libgbm-dev:armhf libegl-dev:armhf",
+]
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture arm64",
+    "apt-get update",
+    "apt-get install --assume-yes --no-install-recommends libdrm-dev:arm64 libgbm-dev:arm64 libegl-dev:arm64",
+]
