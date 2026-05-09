@@ -1,0 +1,4 @@
+name = "broken"
+[[params]]
+slot = "not a number"
+name = "x"
