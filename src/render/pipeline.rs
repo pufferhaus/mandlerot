@@ -208,6 +208,52 @@ fn create_quad_vao(gl: &glow::Context) -> Result<glow::VertexArray> {
     }
 }
 
+#[cfg(test)]
+#[cfg(feature = "desktop")]
+mod tests {
+    use super::*;
+    use crate::render::desktop::WinitGlTarget;
+    use crate::render::target::RenderTarget;
+    use crate::scene::{LoadedScene, SceneMeta};
+    use std::sync::Arc;
+
+    fn loaded(name: &str, body: &str) -> LoadedScene {
+        let meta_str = format!(
+            "name = \"{}\"
+[[params]]
+slot = 0
+name = \"x\"
+min = 0.0
+max = 1.0
+default = 0.0
+",
+            name
+        );
+        LoadedScene {
+            meta: SceneMeta::parse(&meta_str, "inline").unwrap(),
+            fragment_body: body.to_string(),
+            source_path: std::path::PathBuf::from("inline"),
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn bad_recompile_keeps_old_program() {
+        let target = WinitGlTarget::new(64, 64, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let mut pipe = Pipeline::new(gl, 64, 64).unwrap();
+        let good = loaded("foo", "void main() { gl_FragColor = vec4(1.0); }");
+        pipe.upsert_scene("foo", &good).unwrap();
+        assert!(pipe.has_scene("foo"));
+
+        let bad = loaded("foo", "this isn't glsl");
+        let err = pipe.upsert_scene("foo", &bad).unwrap_err();
+        assert!(matches!(err, crate::Error::ShaderCompile(_)));
+        // old program still present
+        assert!(pipe.has_scene("foo"));
+    }
+}
+
 fn bytemuck_cast(s: &[f32]) -> &[u8] {
     // SAFETY: f32 has well-defined byte layout.
     unsafe { std::slice::from_raw_parts(s.as_ptr() as *const u8, std::mem::size_of_val(s)) }
