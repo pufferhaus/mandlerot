@@ -7,6 +7,7 @@ use clap::Parser;
 
 use mandlerot::config::Config;
 use mandlerot::hot_reload::{HotReloader, ReloadEvent};
+#[cfg(all(feature = "desktop", not(feature = "pi")))]
 use mandlerot::render::desktop::WinitGlTarget;
 use mandlerot::render::pipeline::Pipeline;
 use mandlerot::render::target::RenderTarget;
@@ -50,7 +51,14 @@ fn main() -> anyhow::Result<()> {
         blend_mode,
     )?;
 
-    let mut target = WinitGlTarget::new(cfg.render.width, cfg.render.height, "mandleROT")?;
+    #[cfg(all(feature = "desktop", not(feature = "pi")))]
+    let mut target: Box<dyn RenderTarget> =
+        Box::new(WinitGlTarget::new(cfg.render.width, cfg.render.height, "mandleROT")?);
+    #[cfg(all(feature = "pi", target_os = "linux"))]
+    let mut target: Box<dyn RenderTarget> = {
+        use mandlerot::render::pi::PiTarget;
+        Box::new(PiTarget::new(cfg.render.width, cfg.render.height)?)
+    };
     let gl: Arc<glow::Context> = target.gl();
     let mut pipeline = Pipeline::new(gl, cfg.render.width, cfg.render.height)?;
     pipeline.upsert_scene(&state.layer_a.scene_name, library.require(&state.layer_a.scene_name)?)?;
