@@ -57,8 +57,11 @@ slot = 6
 name = "zoom_octaves"
 min = 0.0
 max = 5.0
-default = 2.0
+default = 2.2
 curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 7

@@ -40,9 +40,10 @@ void main() {
     float pat = sin(pu * 3.14159) * cos(pv * 3.14159);
     pat = 0.5 + 0.5 * pat;
 
-    // Audio drift and hue
+    // Audio drift, hue, and slow BPM-locked palette drift.
     float audio_drift = u_audio.x * 0.12 + u_beat * 0.04;
-    float col_t = pat * 0.4 + hue + audio_drift + folded * 0.1;
+    float bpm_drift = beat_time / 32.0;
+    float col_t = pat * 0.4 + hue + audio_drift + bpm_drift + folded * 0.1;
     vec3 col = 0.5 + 0.5 * cos(6.2831 * (col_t + vec3(0.0, 0.33, 0.66)));
 
     // Vignette toward center (the vanishing point)

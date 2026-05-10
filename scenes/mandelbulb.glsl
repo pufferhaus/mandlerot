@@ -73,9 +73,10 @@ void main() {
         return;
     }
 
-    // Palette: escape count + audio hue drift
+    // Palette: escape count + audio hue drift + slow BPM-locked drift
     float audio_drift = u_audio.x * 0.15;
-    float col_t = escape + hue + audio_drift + u_beat * 0.05;
+    float bpm_drift = u_time * bpm / (60.0 * 32.0);
+    float col_t = escape + hue + audio_drift + bpm_drift + u_beat * 0.05;
     vec3 col = 0.5 + 0.5 * cos(6.2831 * (col_t + vec3(0.0, 0.33, 0.66)));
     // Ambient shading: farther hits are dimmer
     float shade = 1.0 - clamp(t / 6.0, 0.0, 0.7);

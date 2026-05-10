@@ -51,7 +51,9 @@ void main() {
     float t = smooth_count / float(max_iter);
 
     vec3 phase_rgb = vec3(0.0, 0.33, 0.66) + u_param5 * vec3(0.05, 0.10, 0.15);
-    vec3 color = 0.5 + 0.5 * cos(6.2831 * (t + u_param4) + phase_rgb);
+    // Slow BPM-locked palette drift so colors evolve even with silent audio.
+    float palette_drift = u_time * bpm / (60.0 * 32.0);
+    vec3 color = 0.5 + 0.5 * cos(6.2831 * (t + u_param4 + palette_drift) + phase_rgb);
     color *= 0.85 + 0.30 * u_audio.x;
 
     gl_FragColor = vec4(color, 1.0);

@@ -15,19 +15,22 @@ slot = 1
 name = "orbit_speed"
 min = 0.0
 max = 2.0
-default = 0.3
+default = 0.5
 curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 2
 name = "cam_distance"
 min = 1.5
 max = 4.0
-default = 2.5
+default = 2.6
 curve = "linear"
 audio_route = "bass"
-audio_amount = 0.5
-audio_polarity = 1.0
+audio_amount = 0.4
+audio_polarity = -1.0
 
 [[params]]
 slot = 3
@@ -36,6 +39,9 @@ min = 0.0
 max = 1.0
 default = 0.6
 curve = "linear"
+audio_route = "himid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 4
