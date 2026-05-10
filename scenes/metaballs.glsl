@@ -10,8 +10,8 @@ void main() {
     float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
 
     int   count    = int(u_param0);
-    float rscale   = u_param1 * (1.0 + u_audio.x * 0.4);
-    float hue      = u_param2;
+    float rscale   = u_param1; // toml routes bass to radius_scale
+    float hue      = u_param2 + u_time * bpm / (60.0 * 32.0); // BPM-locked drift
     float thresh   = u_param3;
     float speed    = u_param4;
 

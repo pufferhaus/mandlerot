@@ -7,7 +7,8 @@ void main() {
     v += sin((p.x + p.y) * 2.0 * u_param0 + t * 0.7);
     v += sin(length(p) * 4.0 * u_param0 - t);
     v *= 0.25;
-    float h = u_param1 + 0.1 * v;
+    // Slow continuous hue drift so the palette evolves with no audio.
+    float h = u_param1 + 0.1 * v + u_time * 0.04;
     vec3 color = 0.5 + 0.5 * cos(6.2831 * (h + vec3(0.0, 0.33, 0.66)));
     gl_FragColor = vec4(color, 1.0);
 }

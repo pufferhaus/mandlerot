@@ -17,8 +17,11 @@ slot = 1
 name = "anim_speed"
 min = 0.0
 max = 2.0
-default = 0.4
+default = 0.6
 curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 2
@@ -27,6 +30,9 @@ min = 0.0
 max = 1.0
 default = 0.55
 curve = "linear"
+audio_route = "himid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 3
