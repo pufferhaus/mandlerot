@@ -5,36 +5,49 @@ display_name = "Mandelbrot"
 slot = 0
 name = "zoom"
 min = 0.1
-max = 100.0
-default = 1.0
+max = 200.0
+default = 6.0
 curve = "exp"
-audio_route = "bass"
-audio_amount = 0.3
 
 [[params]]
 slot = 1
 name = "center_x"
 min = -2.0
 max = 2.0
-default = -0.5
+default = -0.745
 
 [[params]]
 slot = 2
 name = "center_y"
 min = -2.0
 max = 2.0
-default = 0.0
+default = 0.113
 
 [[params]]
 slot = 3
 name = "iterations"
 min = 16.0
 max = 256.0
-default = 96.0
+default = 160.0
 
 [[params]]
 slot = 4
 name = "palette"
 min = 0.0
 max = 1.0
-default = 0.7
+default = 0.15
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+audio_polarity = 1.0
+
+[[params]]
+slot = 5
+name = "color_warp"
+min = 0.0
+max = 2.0
+default = 0.6
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.5
+audio_polarity = 1.0
