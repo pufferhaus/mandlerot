@@ -1,0 +1,46 @@
+name = "voronoi"
+display_name = "Voronoi"
+
+[[params]]
+slot = 0
+name = "scale"
+min = 4.0
+max = 40.0
+default = 12.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "cell_jitter"
+min = 0.0
+max = 1.0
+default = 0.8
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.2
+
+[[params]]
+slot = 3
+name = "edge_intensity"
+min = 0.0
+max = 1.0
+default = 0.5
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "cell_anim"
+min = 0.0
+max = 2.0
+default = 0.3
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.4
