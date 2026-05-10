@@ -1,0 +1,44 @@
+name = "mirror_delay"
+display_name = "Mirror Delay"
+
+[[params]]
+slot = 0
+name = "mirror_decay"
+min = 0.5
+max = 0.99
+default = 0.92
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "shape_size"
+min = 0.05
+max = 0.4
+default = 0.15
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "shape_speed"
+min = -2.0
+max = 2.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.4
+
+[[params]]
+slot = 4
+name = "mirror_axis"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
