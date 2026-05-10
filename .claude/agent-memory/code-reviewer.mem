@@ -1,0 +1,2 @@
+pat|pi-backend|drm-0.12 add_planar_framebuffer takes only (planar_buffer, flags); pi.rs in plan-01 calls with 9 args -- backend never compiled|1
+pat|gbm-cross-compile|gbm 0.15 default features pull wayland-server; Cross.toml needs libwayland-dev, or set default-features=false on gbm dep|1
