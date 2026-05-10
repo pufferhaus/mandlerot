@@ -43,7 +43,8 @@ void main() {
 
     // Head cell is brighter / whiter; the rest takes the hue tint.
     float at_head = step(dist_wrapped, 0.5);
-    float hue = u_param2;
+    // Slow continuous hue drift so the column palette never sits frozen.
+    float hue = u_param2 + u_time * 0.025;
     vec3 tint = 0.5 + 0.5 * cos(6.2831 * (hue + vec3(0.0, 0.33, 0.66)));
     vec3 trail_color = tint * bright * ch;
     vec3 head_color = mix(tint, vec3(1.0), 0.7) * ch;
