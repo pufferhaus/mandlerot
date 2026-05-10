@@ -83,14 +83,19 @@ impl Pipeline {
                 self.width as f32,
                 self.height as f32,
             );
+            // Zero out audio bands when audio is bypassed so scenes can't
+            // see leaked-through reactivity through the u_audio uniform.
+            // Per-slot routing is already gated by `audio_bypass` inside
+            // `effective_slot_values`, but `u_audio` was direct.
+            let bands = if state.audio_bypass { [0.0; 4] } else { state.audio_bands };
             set_uniform_vec4(
                 &self.gl,
                 *prog,
                 "u_audio",
-                state.audio_bands[0],
-                state.audio_bands[1],
-                state.audio_bands[2],
-                state.audio_bands[3],
+                bands[0],
+                bands[1],
+                bands[2],
+                bands[3],
             );
             set_uniform_float(&self.gl, *prog, "u_trigger", state.trigger);
             let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);

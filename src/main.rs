@@ -121,8 +121,12 @@ fn main() -> anyhow::Result<()> {
         let bands = audio_atomic.load_bands();
         let beat_value = audio_atomic.load_beat();
         state.audio_bands = bands;
-        // u_trigger = max(beat decay, manual trigger pulse)
-        state.trigger = state.trigger.max(beat_value);
+        // u_trigger = max(beat decay, manual trigger pulse).
+        // When audio is bypassed only manual `Action::Trigger` should fire,
+        // so do NOT OR in the beat detector's value.
+        if !state.audio_bypass {
+            state.trigger = state.trigger.max(beat_value);
+        }
 
         // Input
         let mut events: Vec<(String, Modifier)> = Vec::new();
