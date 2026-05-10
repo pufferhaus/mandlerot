@@ -1,0 +1,46 @@
+name = "hex_grid"
+display_name = "Hex Grid"
+
+[[params]]
+slot = 0
+name = "scale"
+min = 4.0
+max = 40.0
+default = 16.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+
+[[params]]
+slot = 2
+name = "cell_brightness"
+min = 0.3
+max = 1.0
+default = 0.7
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+
+[[params]]
+slot = 3
+name = "edge_glow"
+min = 0.0
+max = 0.5
+default = 0.15
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "anim_speed"
+min = 0.0
+max = 2.0
+default = 0.5
+curve = "linear"
