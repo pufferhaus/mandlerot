@@ -1,0 +1,44 @@
+name = "cube_wireframe"
+display_name = "Cube Wireframe"
+
+[[params]]
+slot = 0
+name = "rot_speed"
+min = 0.0
+max = 2.0
+default = 0.4
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.6
+
+[[params]]
+slot = 1
+name = "line_thickness"
+min = 0.001
+max = 0.02
+default = 0.004
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.6
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "perspective"
+min = 0.0
+max = 1.0
+default = 0.5
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "size"
+min = 0.2
+max = 0.8
+default = 0.5
+curve = "linear"
