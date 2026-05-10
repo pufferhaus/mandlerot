@@ -30,37 +30,39 @@ float hash11(float p) {
 // --- Curve definitions (all in normalized eye coords) -----------------------
 
 float upper_lid_y(float x) {
-    return -0.05 + 0.50 * x + 0.05 * x * x;
+    // Reduced rise so the lid stays more horizontal; outer-corner upturn is
+    // produced by the wing extension past x=1, not by the centerline curve.
+    return -0.02 + 0.28 * x + 0.10 * x * x;
 }
-// Asymmetric upper-lid thickness: top side bulges more than bottom side.
+// Asymmetric upper-lid thickness: peak biased toward outer (x≈0.7).
+// CRITICAL: thickness function MUST be positive for all x in [0, 1.20].
+// Previous version used pow(x, 0.50), which made sin(pi*pow) negative for
+// x>1, killing the wing entirely.
 float upper_lid_t_up(float x) {
-    float s = sin(3.14159 * pow(clamp(x, 0.0, 1.20), 0.50));
-    // Inner sharp point (x≈0 → t_up≈0); thicker through middle; tapers at wing tip.
-    float taper_outer = 1.0 - smoothstep(1.00, 1.20, x); // wing tip thins
-    return 0.22 * s * taper_outer;
+    float xn = clamp(x, 0.0, 1.20) / 1.20;
+    return 0.20 * sin(3.14159 * pow(xn, 1.40));
 }
 float upper_lid_t_dn(float x) {
-    float s = sin(3.14159 * pow(clamp(x, 0.0, 1.20), 0.55));
-    float taper_outer = 1.0 - smoothstep(1.00, 1.20, x);
-    return 0.13 * s * taper_outer;
+    float xn = clamp(x, 0.0, 1.20) / 1.20;
+    return 0.10 * sin(3.14159 * pow(xn, 1.30));
 }
 
 float lower_lash_y(float x) {
-    // Gentle rise + steeper hook near outer where it meets the wing
+    // Flatter: don't dip nearly as low at the inner end.
     float hook = max(0.0, x - 0.85);
-    return -0.28 + 0.20 * x + 4.0 * hook * hook;
+    return -0.16 + 0.08 * x + 3.5 * hook * hook;
 }
 float lower_lash_t(float x) {
     return 0.014 * (1.0 - 0.7 * x);
 }
 
 float brow_y(float x) {
-    // Bow curve, concave-down (slope decreases toward outer end)
-    return 0.50 + 0.40 * pow(clamp(x, 0.0, 1.15), 0.55);
+    // Gentler rise; the arc shape comes from the thickness profile + outer tip.
+    return 0.36 + 0.22 * pow(clamp(x, 0.0, 1.15), 0.65);
 }
 float brow_t(float x) {
     float xn = clamp(x, 0.0, 1.15) / 1.15;
-    return 0.045 * sin(3.14159 * pow(xn, 0.55));
+    return 0.030 * sin(3.14159 * pow(xn, 0.55));
 }
 
 // SDF helper: distance from point p to line segment (a,b)
@@ -138,7 +140,9 @@ void main() {
         float in_wing_x = step(1.0, x_norm) * step(x_norm, 1.20);
         float in_lid_x = max(in_eye_x, in_wing_x); // upper lid + wing combined
         float in_brow_x = step(-0.05, x_norm) * step(x_norm, 1.15);
-        float in_inner_x = step(-0.16, x_norm) * step(x_norm, 0.02);
+        // Keep inner accents tightly bound near the inner corner so the two
+        // eyes' accents don't cross at the midline.
+        float in_inner_x = step(-0.08, x_norm) * step(x_norm, 0.02);
 
         // ── 2. UPPER LID + 3. OUTER WING ──────────────────────────────────
         float lid_shift = -blink_norm * 0.55;
@@ -163,32 +167,35 @@ void main() {
         m_brow = max(m_brow, in_brow);
 
         // ── 4. INNER ACCENT A (upper stroke) ───────────────────────────────
-        vec2 acc_a_start = vec2(0.00, -0.05);
-        vec2 acc_a_end   = vec2(-0.12, -0.16);
+        // Shorter segments confined to the tight inner range so they don't
+        // leak across the midline.
+        vec2 acc_a_start = vec2(-0.01, -0.04);
+        vec2 acc_a_end   = vec2(-0.07, -0.10);
         float acc_a_d = seg_dist(vec2(x_norm, y_norm), acc_a_start, acc_a_end);
-        float acc_a_taper = 1.0 - smoothstep(0.0, length(acc_a_end - acc_a_start),
-                                              seg_dist(vec2(x_norm, y_norm),
-                                                       acc_a_start, acc_a_start));
         float in_acc_a = step(acc_a_d, 0.012) * in_inner_x * (1.0 - is_closed);
         m_inner_a = max(m_inner_a, in_acc_a);
 
         // ── 5. INNER ACCENT B (lower stroke) ───────────────────────────────
-        vec2 acc_b_start = vec2(-0.02, -0.20);
-        vec2 acc_b_end   = vec2(-0.12, -0.26);
+        vec2 acc_b_start = vec2(-0.02, -0.13);
+        vec2 acc_b_end   = vec2(-0.07, -0.17);
         float acc_b_d = seg_dist(vec2(x_norm, y_norm), acc_b_start, acc_b_end);
         float in_acc_b = step(acc_b_d, 0.009) * in_inner_x;
         m_inner_b = max(m_inner_b, in_acc_b);
 
         // ── 6. LID SHADOW ─────────────────────────────────────────────────
-        // Bounded above by lid_bottom, below by a slight curve mirroring iris top
-        // Shadow region: between bottom of lid and a margin above iris center
-        float shadow_floor_y = -0.05 + 0.08 * x_norm; // mild slope
+        // Thinner shadow zone so the iris's top 1-2 color bands stay visible.
+        // shadow_floor sits just above the iris ellipse center (-0.02 vs iris
+        // center y = +0.03), giving a narrow strip of solid black between
+        // the lid and the top of the iris.
+        float shadow_floor_y = -0.02 + 0.04 * x_norm;
         float in_shadow = step(shadow_floor_y, y_norm) * step(y_norm, lid_bottom)
                           * in_eye_x * (1.0 - is_closed);
         m_shadow = max(m_shadow, in_shadow);
 
         // ── 7. IRIS DISC ──────────────────────────────────────────────────
-        vec2 iris_center = vec2(0.50, -0.05);
+        // Iris pushed slightly up so all 4 color bands fall in the visible
+        // area below the lid shadow.
+        vec2 iris_center = vec2(0.50, 0.03);
         vec2 iris_local = vec2(x_norm, y_norm) - iris_center;
         iris_local -= vec2(look_offset.x * outer_sign / eye_sz,
                            look_offset.y / eye_sz);
