@@ -218,10 +218,7 @@ struct GbmFb<'a> {
 
 impl<'a> drm::buffer::PlanarBuffer for GbmFb<'a> {
     fn size(&self) -> (u32, u32) {
-        (
-            self.bo.width().unwrap_or(0),
-            self.bo.height().unwrap_or(0),
-        )
+        (self.bo.width().unwrap_or(0), self.bo.height().unwrap_or(0))
     }
     fn format(&self) -> drm::buffer::DrmFourcc {
         drm::buffer::DrmFourcc::Argb8888

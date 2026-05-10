@@ -128,23 +128,21 @@ impl RenderTarget for WinitGlTarget {
         let mut should_exit = self.should_exit;
         let mut new_size: Option<(u32, u32)> = None;
         #[allow(deprecated)]
-        let _status = self
-            .event_loop
-            .pump_events(timeout, |event, target| {
-                target.set_control_flow(ControlFlow::Poll);
-                if let Event::WindowEvent { event, .. } = event {
-                    match event {
-                        WindowEvent::CloseRequested => {
-                            should_exit = true;
-                            target.exit();
-                        }
-                        WindowEvent::Resized(size) => {
-                            new_size = Some((size.width, size.height));
-                        }
-                        _ => {}
+        let _status = self.event_loop.pump_events(timeout, |event, target| {
+            target.set_control_flow(ControlFlow::Poll);
+            if let Event::WindowEvent { event, .. } = event {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        should_exit = true;
+                        target.exit();
                     }
+                    WindowEvent::Resized(size) => {
+                        new_size = Some((size.width, size.height));
+                    }
+                    _ => {}
                 }
-            });
+            }
+        });
         self.should_exit = should_exit;
         if let Some((w, h)) = new_size {
             if let (Some(nz_w), Some(nz_h)) = (NonZeroU32::new(w), NonZeroU32::new(h)) {

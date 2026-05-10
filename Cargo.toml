@@ -17,6 +17,7 @@ toml = "0.8"
 glow = "0.14"
 notify = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
+bytemuck = "1"
 
 # desktop backend (default)
 winit = { version = "0.30", optional = true }

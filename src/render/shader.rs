@@ -52,13 +52,20 @@ mod tests {
 
     #[test]
     fn blend_shader_has_all_five_modes() {
-        for mode in 0..5 {
+        // Modes 0..=3 are dispatched via explicit `u_blend_mode == N` checks;
+        // mode 4 is the trailing `else` branch.
+        for mode in 0..=3 {
             assert!(
-                BLEND_FRAG.contains(&format!("u_blend_mode == {}", mode))
-                    || (mode == 4 && BLEND_FRAG.contains("else                        mixed")),
-                "blend mode {} not present",
+                BLEND_FRAG.contains(&format!("u_blend_mode == {}", mode)),
+                "blend mode {} dispatch missing",
                 mode
             );
         }
+        // Five `mixed = mix(...)` assignments — one per blend mode.
+        let assignments = BLEND_FRAG.matches("mixed = mix(").count();
+        assert_eq!(
+            assignments, 5,
+            "expected 5 `mixed = mix(...)` assignments, found {assignments}"
+        );
     }
 }

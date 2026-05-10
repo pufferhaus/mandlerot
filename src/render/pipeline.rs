@@ -223,17 +223,12 @@ fn create_quad_vao(gl: &glow::Context) -> Result<glow::VertexArray> {
             .create_buffer()
             .map_err(|e| Error::Backend(format!("create vbo: {e}")))?;
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-        let bytes: &[u8] = bytemuck_cast(QUAD_POSITIONS);
+        let bytes: &[u8] = bytemuck::cast_slice(QUAD_POSITIONS);
         gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes, glow::STATIC_DRAW);
         gl.enable_vertex_attrib_array(0);
         gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 0, 0);
         Ok(vao)
     }
-}
-
-fn bytemuck_cast(s: &[f32]) -> &[u8] {
-    // SAFETY: f32 has well-defined byte layout.
-    unsafe { std::slice::from_raw_parts(s.as_ptr() as *const u8, std::mem::size_of_val(s)) }
 }
 
 unsafe fn set_uniform_float(gl: &glow::Context, prog: glow::Program, name: &str, v: f32) {
