@@ -1,19 +1,22 @@
 // Gray-Scott reaction-diffusion. State stored in alpha (V concentration);
-// U is approximated as 1 - V so the RGB channels are free for palette display.
-// This prevents the "always orange" failure mode where U=0.5, V=0.3 in R/G
-// would dominate the visible color regardless of hue.
+// U is approximated as 1 - V so RGB is free for palette display.
+//
+// Display strategy: render the gradient magnitude of V (pattern edges) as
+// the visible image. Even when V saturates to high values across the screen,
+// the EDGES between regions stay sharp and glow. This prevents the
+// "fills up" failure mode where the whole panel looks one color.
 //
 // du/dt = Du*lap(u) - u*v² + f*(1-u)
 // dv/dt = Dv*lap(v) + u*v² - (f+k)*v
 //
-// Default (f, k) = (0.037, 0.06) is the "stripes / labyrinth" regime —
-// patterns never settle to static spots; they flow and reorganize forever.
+// Default (f, k) = (0.029, 0.057) is the "stripes" regime — spatially
+// extended labyrinth patterns that flow and reorganize forever.
 //
-// u_param0  feed_rate    (0.01..0.10,  0.037)
-// u_param1  kill_rate    (0.04..0.07,  0.060) audio_route=bass
+// u_param0  feed_rate    (0.01..0.10,  0.029)
+// u_param1  kill_rate    (0.04..0.07,  0.057) audio_route=bass
 // u_param2  hue          (0..1,        0.55)  audio_route=himid
-// u_param3  reseed_beats (4..64,       12.0)  full reset cadence
-// u_param4  perturbation (0..1,        0.4)   noise injection on beats / treble
+// u_param3  reseed_beats (4..64,       12.0)
+// u_param4  perturbation (0..1,        0.3)   audio_route=treble
 
 float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -24,12 +27,11 @@ float v_at(vec2 uv) {
 }
 
 float lap_v(vec2 uv, vec2 px) {
-    float c = v_at(uv);
-    float n = v_at(uv + vec2(0.0,  px.y));
-    float s = v_at(uv + vec2(0.0, -px.y));
-    float e = v_at(uv + vec2( px.x, 0.0));
-    float w = v_at(uv + vec2(-px.x, 0.0));
-    // Diagonals at lower weight for a 9-tap Laplacian — sharper edges than 5-tap.
+    float c  = v_at(uv);
+    float n  = v_at(uv + vec2(0.0,  px.y));
+    float s  = v_at(uv + vec2(0.0, -px.y));
+    float e  = v_at(uv + vec2( px.x, 0.0));
+    float w  = v_at(uv + vec2(-px.x, 0.0));
     float ne = v_at(uv + vec2( px.x,  px.y));
     float nw = v_at(uv + vec2(-px.x,  px.y));
     float se = v_at(uv + vec2( px.x, -px.y));
@@ -49,44 +51,55 @@ void main() {
     float in_wipe   = step(mod(beats, u_param3), 0.15);
     float seed_gate = max(step(u_time, 0.5), in_wipe);
 
-    // Multi-blob seed: 7 blobs at hashed positions across the screen so the
-    // reaction has multiple foci and the pattern emerges with spatial variety.
+    // Sparse seed: 3 small blobs at hashed positions. Patterns spread from
+    // localized sources rather than a uniform noise field, which gives a
+    // more dramatic emergence and longer time-to-saturation.
     float seed = 0.0;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 3; i++) {
         float fi = float(i);
         vec2 center = vec2(hash21(vec2(fi, 1.0)), hash21(vec2(fi, 2.0)));
-        seed = max(seed, step(length(v_uv - center), 0.04));
+        seed = max(seed, step(length(v_uv - center), 0.025));
     }
 
     float v0 = v_at(v_uv);
-    float u0 = 1.0 - v0; // U≈1-V approximation; lets RGB carry palette display
+    float u0 = 1.0 - v0;
 
-    // Apply seed during seed_gate
     v0 = mix(v0, seed,        seed_gate);
     u0 = mix(u0, 1.0 - seed,  seed_gate);
 
-    // Beat perturbation: inject sparse V noise so patterns keep reorganizing.
+    // Sparse perturbation only on strong beats; less likely to flood.
     float beat_noise = hash21(v_uv * u_resolution + floor(beats * 4.0));
-    float beat_inject = step(0.97, beat_noise) * u_beat * u_param4 * 0.3;
+    float beat_inject = step(0.995, beat_noise) * step(0.6, u_beat) * u_param4 * 0.2;
     v0 = min(1.0, v0 + beat_inject * (1.0 - seed_gate));
 
-    // Reaction-diffusion step (single full step; Du=1.0, Dv=0.5, dt=1.0)
+    // Reaction-diffusion. dt=0.5 for stability + slower spread.
     float lap = lap_v(v_uv, px);
-    // For U we use the inverse approximation, but its laplacian is just -lap_v.
     float lap_u = -lap;
     float uvv = u0 * v0 * v0;
     float du = 1.0 * lap_u - uvv + f * (1.0 - u0);
     float dv = 0.5 * lap   + uvv - (f + k) * v0;
-    float vn = clamp(v0 + dv, 0.0, 1.0);
-    // un is implied by 1 - vn for display purposes; we don't need to store it.
+    float vn = clamp(v0 + dv * 0.5, 0.0, 1.0);
 
-    // Display: palette of V with BPM-locked hue drift, audio-modulated.
-    float hue_drift = beats / 48.0;
-    float palette_t = u_param2 + hue_drift + vn * 0.6;
+    // Edge-based display: gradient magnitude of V highlights pattern boundaries.
+    // Sample V at neighbor pixels to compute |grad V|.
+    float v_e = v_at(v_uv + vec2( px.x, 0.0));
+    float v_w = v_at(v_uv + vec2(-px.x, 0.0));
+    float v_n = v_at(v_uv + vec2(0.0,  px.y));
+    float v_s = v_at(v_uv + vec2(0.0, -px.y));
+    float dvx = (v_e - v_w) * 0.5;
+    float dvy = (v_n - v_s) * 0.5;
+    float grad = length(vec2(dvx, dvy));
+    // Edge intensity: sharp at high gradient, dark in interior regions.
+    float edge = smoothstep(0.003, 0.04, grad);
+
+    float hue_drift = beats / 32.0;
+    // Hue varies slightly with V level so different stripe densities show
+    // different colors.
+    float palette_t = u_param2 + hue_drift + vn * 0.3;
     vec3 color = 0.5 + 0.5 * cos(6.2831 * (palette_t + vec3(0.0, 0.33, 0.66)));
-    // Modulate brightness by V so empty regions are dark, populated regions glow.
-    color *= 0.15 + 0.85 * smoothstep(0.05, 0.55, vn);
+    // Mix: edges fully colored; interiors get a tiny ambient glow so the
+    // pattern shape is hinted at even where the gradient is zero.
+    color *= edge + 0.05 * vn;
 
-    // RGB = display color; alpha = state for next frame
     gl_FragColor = vec4(color, vn);
 }
