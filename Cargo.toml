@@ -21,6 +21,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = "1"
 rustfft = "6"
 cpal = "0.15"
+embedded-graphics = "0.8"
 
 # desktop backend (default)
 winit = { version = "0.30", optional = true }
