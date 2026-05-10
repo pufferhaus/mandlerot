@@ -1,47 +1,53 @@
-// Pixel-art anime eyes — matches reference: thick tapered upper lid that
-// curves up to the outer corner, thin parallel eyebrow above, thin lower
-// lash line below, iris partially covered by lid shadow with horizontal
-// color bands (dark → mid → light), pixel-quantized rendering.
+// Pixel-art anime eyes — pair of large detailed eyes with:
+//   - Tapered upper lid curving up to dramatic outer-corner point
+//   - Eyebrow as a separate, LONGER curve extending past both corners
+//   - Inner-corner accent (2 short lash strokes just past the inner edge)
+//   - Thin lower lash that tapers
+//   - Multi-band iris (dark/mid/light) under upper-lid shadow
+//   - Dark pupil dot in the visible iris area
+//   - Single chunky white highlight
 //
-// Closed-eye blink: upper lid drops to nearly meet lower lash, iris hides.
+// Blink: 5-frame discrete sweep-down. Closed shows two parallel curves.
 //
-// u_param0  pupil_visible (0..1, 0.0) — 0=no pupil dot in iris, 1=visible
+// u_param0  pupil_size    (0.04..0.14, 0.075) audio_route=bass amount=0.15
 // u_param1  look_speed    (0..1.5, 0.4)
-// u_param2  iris_hue      (0..1, 0.58) audio_route=himid amount=0.35
+// u_param2  iris_hue      (0..1, 0.58) audio_route=himid amount=0.3
 // u_param3  blink_chance  (0..1, 0.45)
-// u_param4  eye_size      (0.32..0.55, 0.42)
+// u_param4  eye_size      (0.7..1.6, 1.20)
 // u_param5  jitter        (0..0.04, 0.008) audio_route=treble amount=0.5
-// u_param6  iris_radius   (0.30..0.55, 0.42) — iris radius as fraction of eye height
-// u_param7  pixel_grid    (60..200, 120)
+// u_param6  iris_radius   (0.22..0.40, 0.30)
+// u_param7  pixel_grid    (80..320, 200)
 
 float hash11(float p) {
     return fract(sin(p * 12.9898) * 43758.5453);
 }
 
-// All curves and thicknesses defined in local (x_norm, y_norm) coords where
-// x_norm 0..1 = inner→outer and y_norm is in the same units as x_norm (so y
-// extends ~0.5 above and below the eye centerline at default settings).
+// All curves in local normalized coords. x: 0 = inner corner, 1 = outer corner.
+// y: in same units as x (so pixels are square in normalized space).
+
 float upper_lid_y(float x) {
-    // Pronounced rising curve to outer corner.
-    return -0.05 + 0.45 * x + 0.10 * x * x;
+    // Dramatic rise to the outer corner, gentle near inner.
+    return -0.04 + 0.50 * x + 0.18 * x * x;
 }
 float upper_lid_t(float x) {
-    // Tapered thickness: thin at inner, thickest mid-to-outer.
-    return 0.110 * sin(3.14159 * pow(x, 0.55));
+    // Thin at inner, peaks at ~0.65, tapers at outer point.
+    return 0.13 * sin(3.14159 * pow(x, 0.55));
 }
 
 float lower_lash_y(float x) {
-    return -0.32 + 0.18 * x;
+    // Nearly flat with slight upturn at outer.
+    return -0.30 + 0.20 * x;
 }
 float lower_lash_t(float x) {
     return 0.020 * (1.0 - 0.6 * x);
 }
 
 float brow_y(float x) {
-    return upper_lid_y(x) + 0.26;
+    // Parallel to upper lid, offset up.
+    return upper_lid_y(x) + 0.32;
 }
 float brow_t(float x) {
-    return 0.028 * sin(3.14159 * pow(x, 0.45));
+    return 0.030 * sin(3.14159 * pow(clamp(x, 0.0, 1.0), 0.45));
 }
 
 void main() {
@@ -57,21 +63,18 @@ void main() {
     float beats = u_time * bpm / 60.0;
 
     float eye_sz = u_param4;
-    // Inner corners sit a small fixed gap from screen center so eyes can
-    // grow large (eye_sz up to 1.1) without the inner edges colliding.
-    vec2 lc = vec2(-0.20, 0.0);
-    vec2 rc = vec2( 0.20, 0.0);
+    // Inner corners pinned close to center; eyes grow OUTward.
+    vec2 lc = vec2(-0.10, 0.0);
+    vec2 rc = vec2( 0.10, 0.0);
 
-    // Look direction
     float lt = u_time * u_param1;
     vec2 look = vec2(sin(lt * 0.7), sin(lt * 0.5 + 1.7)) * 0.5;
     float jt = u_time * 18.0;
     look += vec2(sin(jt), cos(jt * 1.3)) * u_param5 * 6.0;
     look = clamp(look, vec2(-1.0), vec2(1.0));
-    vec2 look_offset = look * eye_sz * 0.10;
+    vec2 look_offset = look * eye_sz * 0.08;
     look_offset = floor(look_offset / pixel_size) * pixel_size;
 
-    // Blink: 5-frame discrete animation
     float beat_period = 4.0;
     float blink_seed  = floor(beats / beat_period);
     float blink_fire  = step(1.0 - u_param3, hash11(blink_seed));
@@ -81,15 +84,16 @@ void main() {
     float blink_frame = floor(frame_f + 0.5);
     float blink_norm  = blink_frame / 4.0;
 
-    // Accumulator masks (across both eyes)
     float lid_mask = 0.0;
     float brow_mask = 0.0;
     float lower_lash_mask = 0.0;
+    float inner_accent_mask = 0.0;
     float sclera_mask = 0.0;
-    float iris_band1 = 0.0; // top band (darkest in-iris)
-    float iris_band2 = 0.0; // middle
-    float iris_band3 = 0.0; // bottom (lightest)
+    float iris_band1 = 0.0;
+    float iris_band2 = 0.0;
+    float iris_band3 = 0.0;
     float iris_outline = 0.0;
+    float pupil_mask = 0.0;
     float highlight = 0.0;
 
     for (int i = 0; i < 2; i++) {
@@ -104,9 +108,11 @@ void main() {
         float y_norm = yl / eye_sz;
 
         float in_x = step(0.0, x_norm) * step(x_norm, 1.0);
+        // Extended x range for eyebrow + inner-corner details
+        float in_brow_x = step(-0.10, x_norm) * step(x_norm, 1.25);
+        float in_inner_x = step(-0.10, x_norm) * step(x_norm, 0.05);
 
-        // Blink shifts upper lid down toward the lower lash
-        float lid_shift = -blink_norm * 0.32;
+        float lid_shift = -blink_norm * 0.55;
         float uy = upper_lid_y(x_norm) + lid_shift;
         float ut = upper_lid_t(x_norm);
         float ly = lower_lash_y(x_norm);
@@ -120,78 +126,89 @@ void main() {
         float in_lower = step(abs(y_norm - ly), lt2 * 0.5) * in_x;
         lower_lash_mask = max(lower_lash_mask, in_lower);
 
-        // Eyebrow band (doesn't blink)
-        float by = brow_y(x_norm);
+        // Eyebrow over EXTENDED x range so it sticks out past lid corners
+        float by = brow_y(clamp(x_norm, 0.0, 1.0));
         float bt = brow_t(x_norm);
-        float in_brow = step(abs(y_norm - by), bt * 0.5) * in_x;
-        brow_mask = max(brow_mask, in_brow);
+        float in_brow_y = step(abs(y_norm - by), bt * 0.5);
+        brow_mask = max(brow_mask, in_brow_y * in_brow_x);
 
-        // Eye interior between lids (above lower, below upper centerline)
+        // Inner-corner accents: 2 short tapered strokes hanging off inner corner.
+        // Stroke 1: extends upper-lid direction back toward x_norm < 0
+        float accent1_y = upper_lid_y(0.0) + (x_norm) * 0.6 - 0.04;
+        float accent1_t = 0.014;
+        float in_acc1 = step(abs(y_norm - accent1_y), accent1_t * 0.5) * in_inner_x;
+        // Stroke 2: lower one
+        float accent2_y = upper_lid_y(0.0) + (x_norm) * 0.6 - 0.10;
+        float in_acc2 = step(abs(y_norm - accent2_y), 0.010 * 0.5) * in_inner_x;
+        inner_accent_mask = max(inner_accent_mask, max(in_acc1, in_acc2));
+
+        // Eye interior between lid centerlines (excluding the lid band itself)
         float between = step(ly + lt2 * 0.5, y_norm) * step(y_norm, uy - ut * 0.5) * in_x;
         sclera_mask = max(sclera_mask, between * step(blink_norm, 0.5));
 
-        // Iris: oval pool seated near the bottom of the interior
-        // Position iris center based on x_norm so it sits where the lid arc allows
+        // Iris pool, positioned in lower portion of interior
         float iris_cx = 0.50;
         float interior_top    = uy - ut * 0.5;
         float interior_bottom = ly + lt2 * 0.5;
-        float iris_cy = mix(interior_bottom, interior_top, 0.60);
+        float iris_cy = mix(interior_bottom, interior_top, 0.55);
         vec2 iris_center_n = vec2(iris_cx, iris_cy);
         vec2 iris_local_n = vec2(x_norm, y_norm) - iris_center_n;
-        // Apply look offset (in normalized eye units)
         iris_local_n -= vec2(look_offset.x * outer_sign / eye_sz,
                               look_offset.y / eye_sz);
         float iris_r = u_param6;
-        // Slightly squashed: wider than tall
-        float iris_d = length(iris_local_n / vec2(1.0, 0.95)) - iris_r;
+        float iris_d = length(iris_local_n / vec2(1.0, 0.92)) - iris_r;
         float in_iris_disc = step(iris_d, 0.0) * between * step(blink_norm, 0.5);
 
-        // Iris outline ring (1 pixel band just inside)
         float ring = step(iris_d, 0.0) * step(-0.04, iris_d) * between
                    * step(blink_norm, 0.5);
         iris_outline = max(iris_outline, ring);
 
-        // Color bands within iris: based on y position relative to iris center
-        // y_iris_norm in -1..+1 (top of iris = +1, bottom = -1)
+        // 3 horizontal color bands within iris (relative y in iris)
         float y_iris = iris_local_n.y / iris_r;
-        float band_top    = step(0.30, y_iris) * in_iris_disc;
-        float band_mid    = step(-0.20, y_iris) * step(y_iris, 0.30) * in_iris_disc;
-        float band_bottom = step(y_iris, -0.20) * in_iris_disc;
+        float band_top    = step(0.20, y_iris) * in_iris_disc;
+        float band_mid    = step(-0.25, y_iris) * step(y_iris, 0.20) * in_iris_disc;
+        float band_bottom = step(y_iris, -0.25) * in_iris_disc;
         iris_band1 = max(iris_band1, band_top);
         iris_band2 = max(iris_band2, band_mid);
         iris_band3 = max(iris_band3, band_bottom);
 
-        // Highlight: single chunky pixel block in lower portion of iris, slightly inner side
-        vec2 hl_pos = iris_local_n - vec2(-0.15, -0.30);
-        float hl = step(max(abs(hl_pos.x), abs(hl_pos.y)), 0.10)
+        // Pupil: dark blob in mid-lower iris
+        float pupil_d = length(iris_local_n / vec2(0.85, 1.0)) - u_param0;
+        pupil_mask = max(pupil_mask, step(pupil_d, 0.0) * in_iris_disc);
+
+        // Chunky highlight square upper-area of iris where lid edge is
+        vec2 hl_pos = iris_local_n - vec2(-iris_r * 0.30, iris_r * 0.20);
+        float hl = step(max(abs(hl_pos.x), abs(hl_pos.y)), iris_r * 0.18)
                  * in_iris_disc;
         highlight = max(highlight, hl);
     }
 
     // Palette
     vec3 bg          = vec3(0.97, 0.95, 0.92);
-    vec3 lid_color   = vec3(0.03, 0.02, 0.04);
+    vec3 lid_color   = vec3(0.04, 0.03, 0.05);
     vec3 sclera_col  = vec3(0.96, 0.94, 0.90);
     float hue_drift  = beats / 32.0;
-    // Iris base hue cycles via u_param2 + drift + audio
     vec3 hue_base = 0.5 + 0.5 * cos(
         6.2831 * (u_param2 + hue_drift + vec3(0.0, 0.33, 0.66))
     );
-    // Three iris tones: darker → mid → lighter
-    vec3 iris_dark = hue_base * 0.35;
-    vec3 iris_mid  = hue_base * 0.75;
-    vec3 iris_lt   = mix(hue_base, vec3(1.0), 0.45);
+    // Three strongly distinct iris tones — dark/mid/light around the hue
+    vec3 iris_dark = hue_base * 0.28;
+    vec3 iris_mid  = hue_base * 0.70;
+    vec3 iris_lt   = mix(hue_base, vec3(1.0), 0.55);
+    vec3 pupil_col = vec3(0.02, 0.02, 0.05);
 
     vec3 col = bg;
     col = mix(col, sclera_col,   sclera_mask);
     col = mix(col, iris_dark,    iris_band1);
     col = mix(col, iris_mid,     iris_band2);
     col = mix(col, iris_lt,      iris_band3);
+    col = mix(col, pupil_col,    pupil_mask);
     col = mix(col, iris_dark,    iris_outline);
     col = mix(col, vec3(1.0),    highlight);
     col = mix(col, lid_color,    lid_mask);
     col = mix(col, lid_color,    lower_lash_mask);
     col = mix(col, lid_color,    brow_mask);
+    col = mix(col, lid_color,    inner_accent_mask);
 
     gl_FragColor = vec4(col, 1.0);
 }
