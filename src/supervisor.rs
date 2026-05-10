@@ -81,6 +81,20 @@ mod tests {
     }
 
     #[test]
+    fn enable_clears_disabled_and_fault_history() {
+        let mut s = Supervisor::new();
+        for _ in 0..3 {
+            s.record_fault("foo");
+        }
+        assert!(s.is_disabled("foo"));
+        s.enable("foo");
+        assert!(!s.is_disabled("foo"));
+        // Fresh fault budget after enable
+        assert!(!s.record_fault("foo"));
+        assert!(!s.record_fault("foo"));
+    }
+
+    #[test]
     fn resolve_substitutes_safe() {
         let mut s = Supervisor::new();
         for _ in 0..3 {

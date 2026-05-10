@@ -211,7 +211,18 @@ fn main() -> anyhow::Result<()> {
         }
         for (key, modifier) in events {
             if let Some(action) = keymap.lookup(&key, modifier, &state) {
+                let old_a = state.layer_a.scene_name.clone();
+                let old_b = state.layer_b.scene_name.clone();
                 handle_action(&action, &mut state, &library, &mut presets, &mut tap_tempo);
+                // Spec section 11: a manual re-select clears any auto-disable
+                // applied by the supervisor, giving the user a fresh fault
+                // budget.
+                if state.layer_a.scene_name != old_a {
+                    supervisor.enable(&state.layer_a.scene_name);
+                }
+                if state.layer_b.scene_name != old_b {
+                    supervisor.enable(&state.layer_b.scene_name);
+                }
             }
         }
 
