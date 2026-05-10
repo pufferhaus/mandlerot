@@ -4,3 +4,6 @@ pat|audio-beat|beat detector must receive FFT magnitudes, not time-domain sample
 pat|keymap-fallthrough|keymap "DebugOverlayToggle" silently aliases to Action::Trigger via parse fallback; treat unmapped UI labels as no-op, not as another action|1
 pat|cfg-pi-input|main.rs Pi build path needs an EvdevInput::poll() branch parallel to winit drain — easy to forget when only desktop is exercised|1
 loc|preset-format|src/preset/store.rs uses serde_json with BTreeMap<String, Preset>; atomic write is tmp + fsync + rename in flush()|1
+pat|supervisor-recovery|src/main.rs:256-263 overwrites state.layer_X.scene_name with "__safe__" after Supervisor::resolve substitution; original name lost so manual re-select cannot recover (Supervisor::enable never called) — contradicts spec "disabled until next manual select"|1
+pat|status-thread-clone|src/status/thread.rs takes SceneLibrary at spawn but compose.rs ignores it (`_lib`); the clone is dead weight and the worker would show stale lib metadata if it were ever used|1
+pat|cfg-duplicate-attr|src/status/desktop.rs uses #![cfg(...)] inner attr while mod.rs already gates the module with #[cfg(...)] — clippy flags duplicated_attributes; drop the inner #![cfg]|1

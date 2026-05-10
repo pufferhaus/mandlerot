@@ -16,8 +16,8 @@ use display_interface_spi::SPIInterface;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::Rectangle;
-use mipidsi::Builder;
 use mipidsi::models::ILI9486Rgb565;
+use mipidsi::Builder;
 use rppal::gpio::{Gpio, OutputPin};
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 
@@ -26,11 +26,7 @@ use crate::error::{Error, Result};
 use super::render::Fb;
 
 pub struct PiPanelBackend {
-    display: mipidsi::Display<
-        SPIInterface<Spi, OutputPin>,
-        ILI9486Rgb565,
-        OutputPin,
-    >,
+    display: mipidsi::Display<SPIInterface<Spi, OutputPin>, ILI9486Rgb565, OutputPin>,
 }
 
 impl PiPanelBackend {

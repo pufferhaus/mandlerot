@@ -90,8 +90,24 @@ fn write_layer_headers(g: &mut TextScreen, state: &SharedState) {
 fn write_layer_params(g: &mut TextScreen, state: &SharedState) {
     for slot in 0..8 {
         let row = 2 + slot as usize;
-        write_one_param_row(g, row, &state.layer_a, slot, state.selected_param_a == slot, state.active_layer == Layer::A, 0);
-        write_one_param_row(g, row, &state.layer_b, slot, state.selected_param_b == slot, state.active_layer == Layer::B, 41);
+        write_one_param_row(
+            g,
+            row,
+            &state.layer_a,
+            slot,
+            state.selected_param_a == slot,
+            state.active_layer == Layer::A,
+            0,
+        );
+        write_one_param_row(
+            g,
+            row,
+            &state.layer_b,
+            slot,
+            state.selected_param_b == slot,
+            state.active_layer == Layer::B,
+            41,
+        );
     }
 }
 
@@ -105,7 +121,11 @@ fn write_one_param_row(
     col_off: usize,
 ) {
     let def = layer.params.defs().iter().find(|d| d.slot == slot);
-    let cursor = if is_selected && layer_active { '>' } else { ' ' };
+    let cursor = if is_selected && layer_active {
+        '>'
+    } else {
+        ' '
+    };
     g.set(row, col_off + 1, Cell::new(' ', ATTR_NORMAL));
     g.set(row, col_off + 2, Cell::new(cursor, ATTR_BRIGHT));
     let slot_ch = std::char::from_digit(slot as u32, 10).unwrap_or('?');
@@ -138,7 +158,11 @@ fn write_one_param_row(
             0.0
         };
         let pos = (frac * 13.0).round() as usize;
-        let bar_attr = if is_selected && layer_active { ATTR_BRIGHT } else { ATTR_NORMAL };
+        let bar_attr = if is_selected && layer_active {
+            ATTR_BRIGHT
+        } else {
+            ATTR_NORMAL
+        };
         g.set(row, col_off + 18 + pos, Cell::new('█', bar_attr));
     }
     let val_str = format_value(val, base);
@@ -200,16 +224,17 @@ fn write_audio_presets_last(g: &mut TextScreen, state: &SharedState) {
         let active = state.active_preset_slot == Some(slot);
         let attr = if active { ATTR_INVERSE } else { ATTR_DIM };
         g.set(13, col, Cell::new('[', attr));
-        g.set(13, col + 1, Cell::new(std::char::from_digit(slot as u32, 10).unwrap(), attr));
+        g.set(
+            13,
+            col + 1,
+            Cell::new(std::char::from_digit(slot as u32, 10).unwrap(), attr),
+        );
         g.set(13, col + 2, Cell::new(']', attr));
         col += 4;
     }
 
     // Last action footer
-    let last = format!(
-        "{}",
-        truncate(&state.last_action_label, 30)
-    );
+    let last = truncate(&state.last_action_label, 30);
     g.write(13, 48, ATTR_NORMAL, &last);
 }
 

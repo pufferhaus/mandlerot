@@ -1,8 +1,6 @@
 //! Desktop status backend — writes the framebuffer as PNG to a path on demand.
 //! Useful for verifying the panel design from macOS without an actual SPI panel.
 
-#![cfg(feature = "desktop")]
-
 use std::path::Path;
 
 use embedded_graphics::pixelcolor::Rgb565;
@@ -61,8 +59,8 @@ fn rgb565_to_rgb888(p: Rgb565) -> (u8, u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::status::Backend;
     use crate::status::theme::FG_BRIGHT;
+    use crate::status::Backend;
 
     #[test]
     fn rgb565_white_to_rgb888_is_full_brightness() {

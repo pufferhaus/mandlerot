@@ -100,7 +100,11 @@ impl Pipeline {
             set_uniform_float(&self.gl, *prog, "u_trigger", state.trigger);
             // Beat trigger is the same value as `u_trigger` for now; scenes
             // can prefer one or the other. Zero when bypassed.
-            let beat_uniform = if state.audio_bypass { 0.0 } else { state.trigger };
+            let beat_uniform = if state.audio_bypass {
+                0.0
+            } else {
+                state.trigger
+            };
             set_uniform_float(&self.gl, *prog, "u_beat", beat_uniform);
             set_uniform_float(&self.gl, *prog, "u_bpm", state.tap_tempo_bpm);
             let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);
@@ -167,6 +171,7 @@ impl Pipeline {
     /// Upload an RGBA strip and draw it at `(origin_x, origin_y)` on the
     /// currently bound framebuffer. Caller is responsible for binding the right
     /// target first.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_overlay_strip(
         &mut self,
         rgba: &[u8],

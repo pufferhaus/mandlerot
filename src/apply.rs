@@ -200,10 +200,10 @@ fn apply_scene_cycle(
     dir: i8,
 ) -> Result<()> {
     let names: Vec<String> = lib
-                .names()
-                .filter(|n| !n.starts_with("__"))
-                .map(|s| s.to_string())
-                .collect();
+        .names()
+        .filter(|n| !n.starts_with("__"))
+        .map(|s| s.to_string())
+        .collect();
     if names.is_empty() {
         return Ok(());
     }

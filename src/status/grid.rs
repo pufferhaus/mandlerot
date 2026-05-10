@@ -21,7 +21,10 @@ pub const ATTR_DIM: u8 = 1 << 1;
 pub const ATTR_INVERSE: u8 = 1 << 2;
 
 impl Cell {
-    pub const BLANK: Cell = Cell { ch: ' ', attr: ATTR_NORMAL };
+    pub const BLANK: Cell = Cell {
+        ch: ' ',
+        attr: ATTR_NORMAL,
+    };
     pub fn new(ch: char, attr: u8) -> Self {
         Self { ch, attr }
     }

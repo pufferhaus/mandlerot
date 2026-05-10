@@ -51,7 +51,10 @@ fn switching_layer_changes_active_marker() {
     let g_a = state_to_grid(&s, &lib());
     s.active_layer = Layer::B;
     let g_b = state_to_grid(&s, &lib());
-    assert_ne!(g_a.cells, g_b.cells, "switching layer must change at least one cell");
+    assert_ne!(
+        g_a.cells, g_b.cells,
+        "switching layer must change at least one cell"
+    );
 }
 
 #[test]
@@ -77,7 +80,11 @@ fn xfade_at_one_puts_marker_on_right() {
         }
     }
     assert_eq!(marker_cols.len(), 1);
-    assert!(marker_cols[0] >= 55, "expected marker near right end, got col {}", marker_cols[0]);
+    assert!(
+        marker_cols[0] >= 55,
+        "expected marker near right end, got col {}",
+        marker_cols[0]
+    );
 }
 
 #[test]
