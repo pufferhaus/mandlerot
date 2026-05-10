@@ -1,0 +1,48 @@
+name = "glitch"
+display_name = "Glitch"
+
+[[params]]
+slot = 0
+name = "rows"
+min = 8.0
+max = 64.0
+default = 24.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "shift_amount"
+min = 0.0
+max = 0.3
+default = 0.05
+curve = "linear"
+audio_route = "beat"
+audio_amount = 1.0
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "chroma_split"
+min = 0.0
+max = 0.05
+default = 0.01
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.5
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "hue_base"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "scanline_strength"
+min = 0.0
+max = 1.0
+default = 0.3
+curve = "linear"
