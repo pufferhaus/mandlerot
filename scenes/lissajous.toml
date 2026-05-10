@@ -1,0 +1,45 @@
+name = "lissajous"
+display_name = "Lissajous"
+
+[[params]]
+slot = 0
+name = "a_freq"
+min = 0.5
+max = 5.0
+default = 3.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "b_freq"
+min = 0.5
+max = 5.0
+default = 4.0
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "phase"
+min = 0.0
+max = 1.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "glow_radius"
+min = 0.005
+max = 0.05
+default = 0.015
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.5
+audio_polarity = 1.0
+
+[[params]]
+slot = 4
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.45
+curve = "linear"
