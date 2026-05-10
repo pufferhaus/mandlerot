@@ -19,6 +19,21 @@ void main() {
     vec4 hist = texture2D(u_audio_history, vec2(0.5, t));
     // hist.rgba = (bass, lomid, himid, treble) for that historical frame.
 
+    // When audio is silent or bypassed (history sample sums near zero),
+    // synthesize plausible spectrum data per row so the panel never goes
+    // blank. Smoothly blends between real audio and synthetic noise.
+    float total = hist.r + hist.g + hist.b + hist.a;
+    float fake_factor = 1.0 - smoothstep(0.05, 0.20, total);
+    if (fake_factor > 0.0) {
+        float seed = t * 320.0;
+        vec4 fake;
+        fake.r = abs(sin(seed * 0.13 + u_time * 0.5)) * 0.6 + 0.15;
+        fake.g = abs(sin(seed * 0.21 + u_time * 0.7)) * 0.45;
+        fake.b = abs(sin(seed * 0.34 + u_time * 1.1)) * 0.35;
+        fake.a = abs(sin(seed * 0.52 + u_time * 1.7)) * 0.25;
+        hist = mix(hist, fake, fake_factor);
+    }
+
     // Map x across the four bands. Linearly interpolate between adjacent
     // bands so we get a smooth left-to-right gradient instead of four hard
     // bars. fb in 0..3, i_low in {0,1,2}.
