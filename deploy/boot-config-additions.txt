@@ -1,0 +1,17 @@
+# Append to /boot/firmware/config.txt for mandleROT.
+
+# composite NTSC output
+enable_tvout=1
+sdtv_mode=0
+sdtv_aspect=1
+disable_overscan=1
+
+# disable HDMI to save power and avoid driver fighting
+hdmi_blanking=2
+
+# SPI for status display
+dtparam=spi=on
+
+# tighten boot
+disable_splash=1
+boot_delay=0

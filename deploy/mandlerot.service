@@ -1,0 +1,31 @@
+[Unit]
+Description=mandleROT generative video
+After=multi-user.target
+
+[Service]
+Type=simple
+User=mandlerot
+Group=video
+SupplementaryGroups=input audio gpio spi tty render
+ExecStart=/opt/mandlerot/mandlerot
+WorkingDirectory=/opt/mandlerot
+Environment=RUST_LOG=info
+Environment=MANDLEROT_STATE_DIR=/var/lib/mandlerot
+StandardOutput=append:/var/lib/mandlerot/log/mandlerot.log
+StandardError=append:/var/lib/mandlerot/log/mandlerot.log
+
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+MemoryMax=512M
+TasksMax=64
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mandlerot
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
