@@ -8,13 +8,16 @@ min = 0.0
 max = 1.0
 default = 0.66
 curve = "linear"
+audio_route = "himid"
+audio_amount = 0.2
+audio_polarity = 1.0
 
 [[params]]
 slot = 1
 name = "hue_high"
 min = 0.0
 max = 1.0
-default = 0.0
+default = 0.05
 curve = "linear"
 
 [[params]]
@@ -22,16 +25,22 @@ slot = 2
 name = "scroll_speed"
 min = 0.5
 max = 3.0
-default = 1.0
+default = 1.2
 curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+audio_polarity = 1.0
 
 [[params]]
 slot = 3
 name = "brightness"
 min = 0.0
 max = 2.0
-default = 1.0
+default = 1.1
 curve = "linear"
+audio_route = "treble"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 4

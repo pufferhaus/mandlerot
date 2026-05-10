@@ -6,18 +6,22 @@ slot = 0
 name = "amplitude"
 min = 0.0
 max = 0.5
-default = 0.25
+default = 0.3
 curve = "linear"
+audio_route = "bass"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 1
 name = "thickness"
 min = 0.001
 max = 0.02
-default = 0.005
+default = 0.006
 curve = "linear"
 audio_route = "treble"
-audio_amount = 0.4
+audio_amount = 0.5
+audio_polarity = 1.0
 
 [[params]]
 slot = 2

@@ -6,9 +6,12 @@
 //
 // Classic vertical EQ bars; each bar reads a blended audio band.
 void main() {
+    float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
+    float hue_drift = u_time * bpm / (60.0 * 32.0);
+
     float bars     = u_param0;
-    float hue_low  = u_param1;
-    float hue_high = u_param2;
+    float hue_low  = u_param1 + hue_drift;
+    float hue_high = u_param2 + hue_drift;
     float smoothing = u_param3;
     float spacing   = u_param4;
 
@@ -41,6 +44,10 @@ void main() {
     // Smooth via prev frame: read the prev pixel's green channel as proxy height
     float prev_level = texture2D(u_prev, vec2(uv.x, 0.5)).g;
     level = mix(level, prev_level, smoothing);
+
+    // Idle wave floor: tiny sine motion so bars dance even with no audio.
+    float idle = 0.05 + 0.04 * sin(uv.x * 12.0 + u_time * 1.7) * sin(u_time * 0.6 + t * 6.28);
+    level = max(level, idle);
 
     // Bar height test
     float bar_on = step(uv.y, level) * in_bar;

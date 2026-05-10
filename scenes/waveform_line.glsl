@@ -6,9 +6,10 @@
 //
 // Single horizontal waveform synthesized from audio bands; glow falloff.
 void main() {
+    float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
     float amplitude    = u_param0;
     float thickness    = u_param1;
-    float hue          = u_param2;
+    float hue          = u_param2 + u_time * bpm / (60.0 * 24.0);
     float wave_density = u_param3;
     float trail        = u_param4;
 
@@ -27,6 +28,8 @@ void main() {
     wave += lomid  * sin(pi2 * x * wave_density * 0.5 + 1.0);
     wave += himid  * sin(pi2 * x * wave_density * 0.75 + 2.0);
     wave += treble * sin(pi2 * x * wave_density + 3.0);
+    // Idle drifting sine so the line is never flat without audio.
+    wave += 0.3 * sin(pi2 * x * wave_density * 0.3 + u_time * 0.7);
     wave *= amplitude * 0.5;
 
     // Centered on y=0.5
