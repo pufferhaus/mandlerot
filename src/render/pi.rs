@@ -9,9 +9,7 @@
 use std::os::fd::AsFd;
 use std::sync::Arc;
 
-use drm::control::{
-    connector, crtc, encoder, framebuffer, plane, Device as ControlDevice, ResourceHandles,
-};
+use drm::control::{connector, framebuffer, Device as ControlDevice};
 use drm::Device as BasicDevice;
 
 use crate::error::{Error, Result};
@@ -207,13 +205,57 @@ impl PiContext {
     }
 }
 
-use drm::control::Mode as DrmMode;
+/// Wrapper that adapts `gbm::BufferObject<()>` to `drm::buffer::PlanarBuffer`
+/// without advertising a modifier. The underlying `BufferObject` already
+/// implements `PlanarBuffer` via the `drm-support` feature, but its
+/// `modifier()` always returns `Some(_)`. `add_planar_framebuffer` then
+/// asserts that the caller passes `FbCmd2Flags::MODIFIERS` — which we don't
+/// want for plain ARGB8888 SCANOUT buffers. By returning `None` here we
+/// satisfy the assertion with `FbCmd2Flags::empty()`.
+struct GbmFb<'a> {
+    bo: &'a gbm::BufferObject<()>,
+}
+
+impl<'a> drm::buffer::PlanarBuffer for GbmFb<'a> {
+    fn size(&self) -> (u32, u32) {
+        (
+            self.bo.width().unwrap_or(0),
+            self.bo.height().unwrap_or(0),
+        )
+    }
+    fn format(&self) -> drm::buffer::DrmFourcc {
+        drm::buffer::DrmFourcc::Argb8888
+    }
+    fn modifier(&self) -> Option<drm::buffer::DrmModifier> {
+        None
+    }
+    fn pitches(&self) -> [u32; 4] {
+        [self.bo.stride().unwrap_or(0), 0, 0, 0]
+    }
+    fn handles(&self) -> [Option<drm::buffer::Handle>; 4] {
+        // BufferObject's own DrmBuffer impl converts the gbm union handle
+        // to a drm::buffer::Handle. Reuse that.
+        [
+            Some(<gbm::BufferObject<()> as drm::buffer::Buffer>::handle(
+                self.bo,
+            )),
+            None,
+            None,
+            None,
+        ]
+    }
+    fn offsets(&self) -> [u32; 4] {
+        [0; 4]
+    }
+}
 
 pub struct PiTarget {
     ctx: PiContext,
-    current_fb: Option<framebuffer::Handle>,
-    /// Front-buffer BO from the most recent flip; held until next flip.
-    held_bo: Option<gbm::BufferObject<()>>,
+    /// Queued for next vblank (committed via page_flip but not yet scanning out).
+    pending: Option<(framebuffer::Handle, gbm::BufferObject<()>)>,
+    /// Currently scanning out (returned to us by the most recent flip event).
+    scanning: Option<(framebuffer::Handle, gbm::BufferObject<()>)>,
+    first_flip_done: bool,
     should_exit: bool,
 }
 
@@ -222,43 +264,45 @@ impl PiTarget {
         let ctx = PiContext::create(width_hint, height_hint)?;
         Ok(Self {
             ctx,
-            current_fb: None,
-            held_bo: None,
+            pending: None,
+            scanning: None,
+            first_flip_done: false,
             should_exit: false,
         })
     }
 
     fn add_fb_for_bo(&self, bo: &gbm::BufferObject<()>) -> Result<framebuffer::Handle> {
-        let handles = [
-            bo.handle()
-                .map_err(|e| Error::Backend(format!("bo handle: {e}")))?,
-            0,
-            0,
-            0,
-        ];
-        let pitches = [
-            bo.stride()
-                .map_err(|e| Error::Backend(format!("stride: {e}")))?,
-            0,
-            0,
-            0,
-        ];
-        let offsets = [0u32; 4];
-        let fb = self
-            .ctx
+        self.ctx
             .card
-            .add_planar_framebuffer(
-                drm::control::FbCmd2Flags::empty(),
-                bo.width().map_err(|e| Error::Backend(format!("w: {e}")))?,
-                bo.height().map_err(|e| Error::Backend(format!("h: {e}")))?,
-                drm::buffer::DrmFourcc::Argb8888,
-                handles,
-                pitches,
-                offsets,
-                [0, 0, 0, 0],
-            )
-            .map_err(|e| Error::Backend(format!("add_planar_framebuffer: {e}")))?;
-        Ok(fb)
+            .add_planar_framebuffer(&GbmFb { bo }, drm::control::FbCmd2Flags::empty())
+            .map_err(|e| Error::Backend(format!("add_planar_framebuffer: {e}")))
+    }
+
+    /// Block until the kernel reports a `PageFlip` event for our crtc, then
+    /// the previously-`scanning` buffer/FB is safe to release.
+    fn wait_for_flip(&mut self) -> Result<()> {
+        loop {
+            let events = self
+                .ctx
+                .card
+                .receive_events()
+                .map_err(|e| Error::Backend(format!("receive_events: {e}")))?;
+            for event in events {
+                if let drm::control::Event::PageFlip(pf) = event {
+                    if pf.crtc == self.ctx.crtc_handle {
+                        // Old `scanning` is no longer being scanned out.
+                        if let Some((old_fb, _bo)) = self.scanning.take() {
+                            let _ = self.ctx.card.destroy_framebuffer(old_fb);
+                        }
+                        // Promote pending → scanning.
+                        if let Some(pending) = self.pending.take() {
+                            self.scanning = Some(pending);
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -276,14 +320,19 @@ impl super::target::RenderTarget for PiTarget {
             .egl
             .swap_buffers(self.ctx.egl_display, self.ctx.egl_surface)
             .map_err(|e| Error::Backend(format!("swap: {e}")))?;
-        let bo = self
-            .ctx
-            .surface
-            .lock_front_buffer()
-            .map_err(|e| Error::Backend(format!("lock_front_buffer: {e}")))?;
+        // SAFETY: lock_front_buffer requires the EGL context to have just
+        // rendered to the surface; swap_buffers above satisfies that.
+        let bo = unsafe {
+            self.ctx
+                .surface
+                .lock_front_buffer()
+                .map_err(|e| Error::Backend(format!("lock_front_buffer: {e}")))?
+        };
         let fb = self.add_fb_for_bo(&bo)?;
-        if self.current_fb.is_none() {
-            // First frame: do a full mode-set
+
+        if !self.first_flip_done {
+            // First frame: full mode-set. After this returns the buffer is
+            // already scanning out, so move it directly to `scanning`.
             self.ctx
                 .card
                 .set_crtc(
@@ -294,28 +343,51 @@ impl super::target::RenderTarget for PiTarget {
                     Some(self.ctx.mode),
                 )
                 .map_err(|e| Error::Backend(format!("set_crtc: {e}")))?;
-        } else {
-            self.ctx
-                .card
-                .page_flip(
-                    self.ctx.crtc_handle,
-                    fb,
-                    drm::control::PageFlipFlags::EVENT,
-                    None,
-                )
-                .map_err(|e| Error::Backend(format!("page_flip: {e}")))?;
+            self.scanning = Some((fb, bo));
+            self.first_flip_done = true;
+            return Ok(());
         }
-        // Drop the previously-held BO; the kernel now owns the previous FB.
-        self.held_bo = Some(bo);
-        if let Some(old_fb) = self.current_fb.replace(fb) {
-            let _ = self.ctx.card.destroy_framebuffer(old_fb);
+
+        // If a previous page-flip is still pending, we must wait for its
+        // completion event before queueing another (kernel only allows one
+        // pending flip per crtc).
+        // FIXME(plan-3-deploy): verify this single-pending invariant on hardware.
+        if self.pending.is_some() {
+            self.wait_for_flip()?;
         }
+
+        self.ctx
+            .card
+            .page_flip(
+                self.ctx.crtc_handle,
+                fb,
+                drm::control::PageFlipFlags::EVENT,
+                None,
+            )
+            .map_err(|e| Error::Backend(format!("page_flip: {e}")))?;
+        self.pending = Some((fb, bo));
         Ok(())
     }
 
     fn pump(&mut self) -> bool {
         // Pi has no event loop; SIGINT/SIGTERM handled by systemd.
         !self.should_exit
+    }
+}
+
+impl Drop for PiTarget {
+    fn drop(&mut self) {
+        // Best-effort: drain any pending flip event so we don't destroy
+        // a buffer the kernel is still scanning out.
+        if self.pending.is_some() {
+            let _ = self.wait_for_flip();
+        }
+        if let Some((fb, _)) = self.scanning.take() {
+            let _ = self.ctx.card.destroy_framebuffer(fb);
+        }
+        if let Some((fb, _)) = self.pending.take() {
+            let _ = self.ctx.card.destroy_framebuffer(fb);
+        }
     }
 }
 

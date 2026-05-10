@@ -26,7 +26,7 @@ raw-window-handle = { version = "0.6", optional = true }
 
 # pi backend
 khronos-egl = { version = "6", features = ["dynamic"], optional = true }
-gbm = { version = "0.15", optional = true }
+gbm = { version = "0.15", default-features = false, features = ["drm-support"], optional = true }
 drm = { version = "0.12", optional = true }
 
 [features]
