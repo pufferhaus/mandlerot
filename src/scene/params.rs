@@ -9,6 +9,15 @@ pub struct ParamMap {
     values: BTreeMap<String, f32>,
 }
 
+impl Default for ParamMap {
+    fn default() -> Self {
+        Self {
+            defs: Vec::new(),
+            values: std::collections::BTreeMap::new(),
+        }
+    }
+}
+
 impl ParamMap {
     pub fn from_scene(meta: &SceneMeta) -> Self {
         let defs = meta.params.clone();

@@ -1,0 +1,162 @@
+# mandleROT default keymap.
+#
+# Each entry maps a physical key + (optional) modifier into an Action label.
+# The label is parsed by `Action::from_label`. RawKey strings follow these
+# conventions:
+#
+#   - Single chars: "1", "a", "/" (literal)
+#   - Named: "Tab", "Enter", "Esc", "Backspace", "Space", "F1", "F2", ...
+#   - Numpad keys: "Numpad0", "Numpad1", ..., "NumpadAdd", "NumpadSubtract",
+#     "NumpadMultiply", "NumpadDivide", "NumpadDecimal", "NumpadEnter",
+#     "NumLock"
+#   - Backslash: "Backslash"
+#
+# `modifier` may be: "Shift" (keyboard) or "NumLock" (numpad). Held modifiers
+# only — they don't generate their own Actions.
+
+[[binding]]
+key = "Tab"
+action = "AdvanceMode"
+
+[[binding]]
+key = "Backspace"
+action = "Panic"
+
+[[binding]]
+key = "Esc"
+action = "Panic"
+
+[[binding]]
+key = "Backslash"
+action = "ToggleLayer"
+
+[[binding]]
+key = "NumpadEnter"
+action = "ToggleLayer"
+
+# Slot keys 1-9 (top row keyboard) — Slot Action with n=1..9
+[[binding]]
+key = "1"
+action = "Slot:1"
+[[binding]]
+key = "2"
+action = "Slot:2"
+[[binding]]
+key = "3"
+action = "Slot:3"
+[[binding]]
+key = "4"
+action = "Slot:4"
+[[binding]]
+key = "5"
+action = "Slot:5"
+[[binding]]
+key = "6"
+action = "Slot:6"
+[[binding]]
+key = "7"
+action = "Slot:7"
+[[binding]]
+key = "8"
+action = "Slot:8"
+[[binding]]
+key = "9"
+action = "Slot:9"
+
+# Numpad slot keys (NumLk OFF on cheap pads sends digits)
+[[binding]]
+key = "Numpad1"
+action = "Slot:1"
+[[binding]]
+key = "Numpad2"
+action = "Slot:2"
+[[binding]]
+key = "Numpad3"
+action = "Slot:3"
+[[binding]]
+key = "Numpad4"
+action = "Slot:4"
+[[binding]]
+key = "Numpad5"
+action = "Slot:5"
+[[binding]]
+key = "Numpad6"
+action = "Slot:6"
+[[binding]]
+key = "Numpad7"
+action = "Slot:7"
+[[binding]]
+key = "Numpad8"
+action = "Slot:8"
+[[binding]]
+key = "Numpad9"
+action = "Slot:9"
+
+# Crossfade / param ± (keyboard)
+[[binding]]
+key = "Minus"
+action = "XfadeMinus"
+[[binding]]
+key = "Equal"
+action = "XfadePlus"
+[[binding]]
+key = "BracketLeft"
+action = "XfadeMinus"
+[[binding]]
+key = "BracketRight"
+action = "XfadePlus"
+
+# Crossfade / param ± (numpad)
+[[binding]]
+key = "NumpadSubtract"
+action = "XfadeMinus"
+[[binding]]
+key = "NumpadAdd"
+action = "XfadePlus"
+
+# Trigger / blend / freeze / tap-tempo / audio-bypass
+[[binding]]
+key = "N"
+action = "Trigger"
+[[binding]]
+key = "NumpadDivide"
+action = "Trigger"
+[[binding]]
+key = "M"
+action = "BlendCycle"
+[[binding]]
+key = "NumpadMultiply"
+action = "BlendCycle"
+[[binding]]
+key = "F"
+action = "FreezeToggle"
+[[binding]]
+key = "Space"
+action = "TapTempo"
+[[binding]]
+key = "L"
+action = "TapTempo"
+[[binding]]
+key = "Numpad0"
+action = "TapTempo"
+[[binding]]
+key = "G"
+action = "AudioBypass"
+[[binding]]
+key = "NumpadDecimal"
+action = "AudioBypass"
+
+# Dev F-keys (active only in dev builds; safe to include — non-dev builds
+# ignore Action::ReloadAllScenes / SceneCycle dispatch when feature is off)
+[[binding]]
+key = "F1"
+action = "DebugOverlayToggle"
+[[binding]]
+key = "F2"
+action = "SceneCycle:A:1"
+[[binding]]
+key = "F3"
+action = "SceneCycle:B:1"
+[[binding]]
+key = "F5"
+action = "ReloadAllScenes"
