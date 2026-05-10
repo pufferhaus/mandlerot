@@ -1,2 +1,6 @@
 pat|pi-backend|drm-0.12 add_planar_framebuffer takes only (planar_buffer, flags); pi.rs in plan-01 calls with 9 args -- backend never compiled|1
 pat|gbm-cross-compile|gbm 0.15 default features pull wayland-server; Cross.toml needs libwayland-dev, or set default-features=false on gbm dep|1
+pat|audio-beat|beat detector must receive FFT magnitudes, not time-domain samples; check the slice fed to BeatDetector::update|1
+pat|keymap-fallthrough|keymap "DebugOverlayToggle" silently aliases to Action::Trigger via parse fallback; treat unmapped UI labels as no-op, not as another action|1
+pat|cfg-pi-input|main.rs Pi build path needs an EvdevInput::poll() branch parallel to winit drain — easy to forget when only desktop is exercised|1
+loc|preset-format|src/preset/store.rs uses serde_json with BTreeMap<String, Preset>; atomic write is tmp + fsync + rename in flush()|1

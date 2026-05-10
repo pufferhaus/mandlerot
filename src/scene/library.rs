@@ -23,6 +23,7 @@ pub struct SceneLibrary {
 impl SceneLibrary {
     pub fn load_dir(dir: &Path) -> Result<Self> {
         let mut lib = SceneLibrary::default();
+        lib.inject_safe_scene();
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -70,6 +71,25 @@ impl SceneLibrary {
     /// Replace one scene's body + meta (used by hot-reload).
     pub fn upsert(&mut self, name: &str, scene: LoadedScene) {
         self.scenes.insert(name.to_string(), scene);
+    }
+
+    /// Inject the baked-in `__safe__` fallback scene. Called automatically by
+    /// `load_dir`. Used by PANIC and as a last-resort render target. Cannot be
+    /// removed via hot-reload (file watcher only sees disk).
+    pub fn inject_safe_scene(&mut self) {
+        let meta = SceneMeta::parse(
+            "name = \"__safe__\"\ndisplay_name = \"Safe Fallback\"\n",
+            "<baked>",
+        )
+        .expect("baked safe-scene meta must parse");
+        self.scenes.insert(
+            "__safe__".to_string(),
+            LoadedScene {
+                meta,
+                fragment_body: crate::render::shader::SAFE_SCENE.to_string(),
+                source_path: PathBuf::from("<baked>"),
+            },
+        );
     }
 }
 

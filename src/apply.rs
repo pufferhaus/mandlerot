@@ -84,7 +84,11 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         Action::SetBlendMode(bm) => state.blend_mode = *bm,
         Action::SetXfade(v) => state.xfade = v.clamp(0.0, 1.0),
         Action::SetSceneByIndex { layer, index } => {
-            let names: Vec<String> = lib.names().map(|s| s.to_string()).collect();
+            let names: Vec<String> = lib
+                .names()
+                .filter(|n| !n.starts_with("__"))
+                .map(|s| s.to_string())
+                .collect();
             if let Some(name) = names.get(*index as usize) {
                 let scene = lib.require(name)?;
                 let new_state = crate::state::LayerState {
@@ -195,7 +199,11 @@ fn apply_scene_cycle(
     layer: Layer,
     dir: i8,
 ) -> Result<()> {
-    let names: Vec<String> = lib.names().map(|s| s.to_string()).collect();
+    let names: Vec<String> = lib
+                .names()
+                .filter(|n| !n.starts_with("__"))
+                .map(|s| s.to_string())
+                .collect();
     if names.is_empty() {
         return Ok(());
     }

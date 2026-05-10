@@ -74,6 +74,9 @@ fn main() -> anyhow::Result<()> {
 
     let gl: Arc<glow::Context> = target.gl();
     let mut pipeline = Pipeline::new(gl, cfg.render.width, cfg.render.height)?;
+    // Compile the baked safe-scene up front so PANIC always has a working
+    // fallback even if the user's scene compile breaks.
+    pipeline.upsert_scene("__safe__", library.require("__safe__")?)?;
     pipeline.upsert_scene(
         &state.layer_a.scene_name,
         library.require(&state.layer_a.scene_name)?,
