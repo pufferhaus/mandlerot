@@ -132,6 +132,7 @@ fn main() -> anyhow::Result<()> {
     let (status_handle, _status_join) =
         mandlerot::status::thread::spawn(status_backend, library.clone());
 
+    let mut supervisor = mandlerot::supervisor::Supervisor::new();
     let mut tap_tempo = TapTempo::new();
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
     let mut input_winit = mandlerot::input::winit_src::WinitInputState::default();
@@ -219,30 +220,39 @@ fn main() -> anyhow::Result<()> {
         // Lazy-compile any scene referenced by state but not yet in the pipeline.
         // Actions like SetSceneByIndex / scene cycle / preset recall change
         // `scene_name` without compiling; do it here so the next render finds
-        // a program. Compile failures fall back to safe-scene to keep visuals
-        // alive.
-        for layer_name in [&state.layer_a.scene_name, &state.layer_b.scene_name] {
-            if pipeline.has_scene(layer_name) {
+        // a program. Compile failures are recorded in the supervisor; after
+        // MAX_FAULTS the scene is auto-disabled and substituted with __safe__.
+        for layer_name in [
+            state.layer_a.scene_name.clone(),
+            state.layer_b.scene_name.clone(),
+        ] {
+            if pipeline.has_scene(&layer_name) {
                 continue;
             }
-            match library.require(layer_name) {
+            match library.require(&layer_name) {
                 Ok(scene) => {
-                    if let Err(e) = pipeline.upsert_scene(layer_name, scene) {
-                        tracing::warn!("compile {layer_name}: {e}; falling back to safe-scene");
+                    if let Err(e) = pipeline.upsert_scene(&layer_name, scene) {
+                        tracing::warn!("compile {layer_name}: {e}; recording fault");
+                        if supervisor.record_fault(&layer_name) {
+                            tracing::warn!("scene {layer_name} disabled after repeated faults");
+                        }
                     }
                 }
                 Err(_) => {
-                    tracing::warn!("scene {layer_name} not in library; falling back to safe-scene");
+                    if supervisor.record_fault(&layer_name) {
+                        tracing::warn!("scene {layer_name} disabled (not in library)");
+                    }
                 }
             }
         }
-        // If either layer's scene still failed to compile, swap that layer to
-        // safe-scene for this frame.
-        if !pipeline.has_scene(&state.layer_a.scene_name) {
-            state.layer_a.scene_name = "__safe__".to_string();
+        // Substitute disabled scenes with __safe__.
+        let resolved_a = supervisor.resolve(&state.layer_a.scene_name).to_string();
+        if resolved_a != state.layer_a.scene_name {
+            state.layer_a.scene_name = resolved_a;
         }
-        if !pipeline.has_scene(&state.layer_b.scene_name) {
-            state.layer_b.scene_name = "__safe__".to_string();
+        let resolved_b = supervisor.resolve(&state.layer_b.scene_name).to_string();
+        if resolved_b != state.layer_b.scene_name {
+            state.layer_b.scene_name = resolved_b;
         }
 
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
