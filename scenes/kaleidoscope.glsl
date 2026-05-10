@@ -40,6 +40,8 @@ void main() {
     float v = sin(p.x * 8.0) * cos(p.y * 8.0) + 0.5 * sin(radius * 12.0 - beat_time * 2.0);
     v = 0.5 + 0.5 * v;
 
-    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + v * 0.3 + vec3(0.0, 0.33, 0.66)));
+    // Slow BPM-locked hue drift so palette never sits static.
+    float hue_drift = beat_time / 32.0;
+    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + hue_drift + v * 0.3 + vec3(0.0, 0.33, 0.66)));
     gl_FragColor = vec4(col, 1.0);
 }

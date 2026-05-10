@@ -12,8 +12,8 @@ void main() {
     float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
 
     float scale      = u_param0;
-    float hue        = u_param1 + u_audio.y * 0.3;
-    float brightness = u_param2 + u_audio.x * 0.4;
+    float hue        = u_param1;
+    float brightness = u_param2;
     float edge_glow  = u_param3;
     float anim_speed = u_param4;
 
@@ -29,9 +29,10 @@ void main() {
     float dist_center = length(fr);
 
     // Per-cell color: hash of cell coords + animated time bucket
-    float time_bucket = floor(u_time * anim_speed * 0.5);
+    // BPM-locked drift so palette evolves continuously with no audio.
+    float time_bucket = floor(u_time * (0.5 + anim_speed) * 1.5);
     float h = hxHash(cell + time_bucket);
-    float cell_hue = hue + h * 0.4;
+    float cell_hue = hue + h * 0.4 + u_time * bpm / (60.0 * 32.0);
     vec3 col = 0.5 + 0.5 * cos(6.2831 * (cell_hue + vec3(0.0, 0.33, 0.66)));
 
     // Edge glow: bright ring near cell boundary

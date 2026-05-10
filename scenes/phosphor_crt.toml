@@ -6,8 +6,11 @@ slot = 0
 name = "triad_brightness"
 min = 0.0
 max = 2.0
-default = 1.0
+default = 1.1
 curve = "linear"
+audio_route = "bass"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 1
@@ -22,15 +25,18 @@ slot = 2
 name = "phosphor_glow"
 min = 0.0
 max = 1.0
-default = 0.3
+default = 0.35
 curve = "linear"
+audio_route = "treble"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 3
 name = "source_pattern"
 min = 0.0
 max = 1.0
-default = 0.5
+default = 0.4
 curve = "linear"
 
 [[params]]
@@ -40,3 +46,6 @@ min = 0.0
 max = 2.0
 default = 1.5
 curve = "linear"
+audio_route = "himid"
+audio_amount = 0.3
+audio_polarity = 1.0

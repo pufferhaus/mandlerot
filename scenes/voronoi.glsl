@@ -15,9 +15,10 @@ void main() {
 
     float scale    = u_param0;
     float jitter   = u_param1;
-    float hue      = u_param2 + u_audio.x * 0.2;
+    // BPM-locked hue drift so palette evolves continuously with no audio.
+    float hue      = u_param2 + u_time * bpm / (60.0 * 24.0);
     float edge_int = u_param3;
-    float anim_spd = u_param4 + u_audio.y * 0.4;
+    float anim_spd = u_param4;
 
     vec2 uv = v_uv * scale;
     vec2 cell_base = floor(uv);
