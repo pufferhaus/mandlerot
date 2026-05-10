@@ -15,7 +15,7 @@ pub struct LoadedScene {
 }
 
 /// In-memory registry of all scenes found in a directory.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SceneLibrary {
     scenes: BTreeMap<String, LoadedScene>,
 }

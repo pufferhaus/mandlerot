@@ -3,6 +3,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+struct NullBackend;
+impl mandlerot::status::Backend for NullBackend {
+    fn flush_full(&mut self, _fb: &mandlerot::status::render::Fb) -> mandlerot::Result<()> {
+        Ok(())
+    }
+    fn flush_runs(
+        &mut self,
+        _fb: &mandlerot::status::render::Fb,
+        _runs: &[(usize, usize, usize)],
+    ) -> mandlerot::Result<()> {
+        Ok(())
+    }
+}
+
 use anyhow::Context;
 use clap::Parser;
 
@@ -95,6 +109,28 @@ fn main() -> anyhow::Result<()> {
     } else {
         None
     };
+
+    // Status panel
+    let status_backend: Box<dyn mandlerot::status::Backend> = {
+        #[cfg(all(feature = "pi", target_os = "linux"))]
+        {
+            match mandlerot::status::pi::PiPanelBackend::open() {
+                Ok(b) => Box::new(b) as Box<_>,
+                Err(e) => {
+                    tracing::warn!("SPI panel unavailable: {e}; running without status panel");
+                    Box::new(NullBackend)
+                }
+            }
+        }
+        #[cfg(not(all(feature = "pi", target_os = "linux")))]
+        {
+            Box::new(mandlerot::status::desktop::DesktopPngBackend::new(
+                "target/status.png",
+            )) as Box<_>
+        }
+    };
+    let (status_handle, _status_join) =
+        mandlerot::status::thread::spawn(status_backend, library.clone());
 
     let mut tap_tempo = TapTempo::new();
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
@@ -209,6 +245,10 @@ fn main() -> anyhow::Result<()> {
             state.layer_b.scene_name = "__safe__".to_string();
         }
 
+        status_handle.try_send(mandlerot::status::thread::StateSnapshot {
+            state: state.clone(),
+        });
+
         if let Err(e) = pipeline.frame(&state, target.dimensions().0, target.dimensions().1) {
             tracing::error!("frame error: {e}");
         }
@@ -236,6 +276,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     audio_stop.store(true, Ordering::Relaxed);
+    status_handle.stop.store(true, Ordering::Relaxed);
     Ok(())
 }
 
