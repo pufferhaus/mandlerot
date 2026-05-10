@@ -1,7 +1,8 @@
 //! Desktop keyboard input via winit `KeyEvent`. Translates winit logical
 //! keys to our `RawKey` strings and tracks Shift state.
-
-#![cfg(feature = "desktop")]
+//!
+//! Module-level `#[cfg(feature = "desktop")]` is applied at the parent
+//! `mod input` declaration site, so we don't repeat it here.
 
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{Key, NamedKey, PhysicalKey};
@@ -25,7 +26,11 @@ impl WinitInputState {
         }
 
         let raw = key_to_raw(&event.logical_key, event.physical_key)?;
-        let modifier = if self.shift_held { Modifier::Shift } else { Modifier::None };
+        let modifier = if self.shift_held {
+            Modifier::Shift
+        } else {
+            Modifier::None
+        };
         Some((raw, modifier))
     }
 }
@@ -56,7 +61,7 @@ fn key_to_raw(logical: &Key, physical: PhysicalKey) -> Option<RawKey> {
             "]" | "}" => "BracketRight".into(),
             "\\" | "|" => "Backslash".into(),
             // Letter keys — uppercase shorthand
-            other if other.len() == 1 => other.to_ascii_uppercase().into(),
+            other if other.len() == 1 => other.to_ascii_uppercase(),
             _ => return None,
         });
     }

@@ -49,7 +49,7 @@ impl BeatDetector {
             self.flux_history.push_back(flux);
         }
         self.prev_mags = mags.to_vec();
-        self.trigger = self.trigger * self.decay_per_update;
+        self.trigger *= self.decay_per_update;
         if beat {
             self.trigger = 1.0;
         }

@@ -45,8 +45,8 @@ impl RingBuffer {
             return false;
         }
         let start = (self.head + self.capacity - n) % self.capacity;
-        for i in 0..n {
-            dst[i] = self.data[(start + i) % self.capacity];
+        for (i, slot) in dst.iter_mut().enumerate() {
+            *slot = self.data[(start + i) % self.capacity];
         }
         true
     }

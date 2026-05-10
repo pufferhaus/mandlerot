@@ -25,7 +25,11 @@ impl EnvelopeFollower {
     }
 
     pub fn update(&mut self, x: f32) {
-        let a = if x > self.value { self.attack_a } else { self.release_a };
+        let a = if x > self.value {
+            self.attack_a
+        } else {
+            self.release_a
+        };
         self.value = a * self.value + (1.0 - a) * x;
     }
 }
@@ -101,7 +105,7 @@ mod tests {
         }
         // p95 ≈ 0.95. Values at the top should normalize near 1.0.
         let n = g.normalize(0.95, 50);
-        assert!(n >= 0.9 && n <= 1.0);
+        assert!((0.9..=1.0).contains(&n));
     }
 
     #[test]

@@ -57,6 +57,12 @@ impl AtomicAudio {
     }
 }
 
+impl Default for AtomicAudio {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn spawn(
     atomic: Arc<AtomicAudio>,
     stop: Arc<std::sync::atomic::AtomicBool>,

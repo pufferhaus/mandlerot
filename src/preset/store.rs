@@ -234,7 +234,10 @@ mod tests {
         let solid = lib.require("solid").unwrap().clone();
         limited.upsert("solid", solid);
         let res = store.recall(1, &mut s, &limited);
-        assert!(res.is_ok(), "recall should warn, not error, on missing scene");
+        assert!(
+            res.is_ok(),
+            "recall should warn, not error, on missing scene"
+        );
     }
 
     #[test]

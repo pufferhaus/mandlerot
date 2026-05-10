@@ -26,7 +26,11 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         }
         Action::ToggleLayer => state.active_layer = state.active_layer.other(),
         Action::Slot { n, other_layer } => {
-            let layer = if *other_layer { state.active_layer.other() } else { state.active_layer };
+            let layer = if *other_layer {
+                state.active_layer.other()
+            } else {
+                state.active_layer
+            };
             apply_slot(state, lib, layer, *n)?;
         }
         Action::XfadeMinus => state.xfade = (state.xfade - XFADE_STEP).max(0.0),
@@ -48,7 +52,10 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
             state.preset_dirty = true;
         }
         Action::BlendCycle => {
-            let cur_idx = BLEND_MODES.iter().position(|m| *m == state.blend_mode).unwrap_or(0);
+            let cur_idx = BLEND_MODES
+                .iter()
+                .position(|m| *m == state.blend_mode)
+                .unwrap_or(0);
             state.blend_mode = BLEND_MODES[(cur_idx + 1) % BLEND_MODES.len()];
             state.preset_dirty = true;
         }
@@ -100,7 +107,10 @@ fn apply_slot(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, n: u8) 
     match state.active_mode {
         Mode::Scene => {
             if (1..=9).contains(&n) {
-                let action = Action::SetSceneByIndex { layer, index: n - 1 };
+                let action = Action::SetSceneByIndex {
+                    layer,
+                    index: n - 1,
+                };
                 return apply(&action, state, lib);
             }
         }
@@ -185,7 +195,10 @@ fn apply_scene_cycle(
     };
     let cur_idx = names.iter().position(|n| n == cur_name).unwrap_or(0) as i32;
     let next_idx = ((cur_idx + dir as i32).rem_euclid(names.len() as i32)) as u8;
-    let action = Action::SetSceneByIndex { layer, index: next_idx };
+    let action = Action::SetSceneByIndex {
+        layer,
+        index: next_idx,
+    };
     apply(&action, state, lib)
 }
 
@@ -246,7 +259,15 @@ mod tests {
     fn slot_in_scene_mode_sets_scene_by_index() {
         let lib = three_scenes(); // alphabetical: alpha, beta, gamma
         let mut s = base_state(&lib);
-        apply(&Action::Slot { n: 3, other_layer: false }, &mut s, &lib).unwrap();
+        apply(
+            &Action::Slot {
+                n: 3,
+                other_layer: false,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
         assert_eq!(s.layer_a.scene_name, "gamma");
     }
 
@@ -254,7 +275,15 @@ mod tests {
     fn slot_with_other_layer_targets_b() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
-        apply(&Action::Slot { n: 2, other_layer: true }, &mut s, &lib).unwrap();
+        apply(
+            &Action::Slot {
+                n: 2,
+                other_layer: true,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
         assert_eq!(s.layer_b.scene_name, "beta");
         assert_eq!(s.layer_a.scene_name, "alpha"); // unchanged
     }
@@ -292,7 +321,15 @@ mod tests {
         let mut s = base_state(&lib);
         s.active_mode = Mode::Preset;
         s.layer_a.params.set("x", 0.99);
-        apply(&Action::Slot { n: 9, other_layer: false }, &mut s, &lib).unwrap();
+        apply(
+            &Action::Slot {
+                n: 9,
+                other_layer: false,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
         assert_eq!(s.layer_a.params.get("x"), Some(0.5)); // back to default
     }
 

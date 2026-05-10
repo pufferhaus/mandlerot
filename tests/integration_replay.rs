@@ -4,9 +4,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use mandlerot::action::Action;
 use mandlerot::apply::apply;
-use mandlerot::input::keymap::{KeyMap, Modifier};
+use mandlerot::input::keymap::KeyMap;
 use mandlerot::input::mock::MockInput;
 use mandlerot::scene::{LoadedScene, SceneLibrary, SceneMeta};
 use mandlerot::state::{BlendMode, Mode, SharedState};
@@ -35,8 +34,7 @@ fn replay_quickset_drives_state() {
     let lib = fixture_lib();
     let mut state = SharedState::from_initial(&lib, "alpha", "alpha", 0.0, BlendMode::Mix).unwrap();
     let km = KeyMap::parse(include_str!("../keymap.toml")).unwrap();
-    let mut input =
-        MockInput::from_script(include_str!("fixtures/replay_quickset.txt")).unwrap();
+    let mut input = MockInput::from_script(include_str!("fixtures/replay_quickset.txt")).unwrap();
 
     // Drain the whole script.
     let events = input.drain_until(Duration::from_secs(10));
@@ -58,5 +56,8 @@ fn replay_quickset_drives_state() {
     assert_eq!(state.selected_param_a, 0);
     let cur = state.layer_a.params.get("x").unwrap();
     let expected = 0.5 + 7.0 * 0.02; // 7 increments × 2% of range
-    assert!((cur - expected).abs() < 1e-4, "got {cur}, expected ~{expected}");
+    assert!(
+        (cur - expected).abs() < 1e-4,
+        "got {cur}, expected ~{expected}"
+    );
 }

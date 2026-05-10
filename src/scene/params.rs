@@ -3,19 +3,10 @@ use std::collections::BTreeMap;
 use super::meta::{ParamDef, SceneMeta};
 
 /// Live map of param name → current f32 value, with the scene's defs for clamp/curve.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ParamMap {
     defs: Vec<ParamDef>,
     values: BTreeMap<String, f32>,
-}
-
-impl Default for ParamMap {
-    fn default() -> Self {
-        Self {
-            defs: Vec::new(),
-            values: std::collections::BTreeMap::new(),
-        }
-    }
 }
 
 impl ParamMap {

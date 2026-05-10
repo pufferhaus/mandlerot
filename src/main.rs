@@ -74,8 +74,14 @@ fn main() -> anyhow::Result<()> {
 
     let gl: Arc<glow::Context> = target.gl();
     let mut pipeline = Pipeline::new(gl, cfg.render.width, cfg.render.height)?;
-    pipeline.upsert_scene(&state.layer_a.scene_name, library.require(&state.layer_a.scene_name)?)?;
-    pipeline.upsert_scene(&state.layer_b.scene_name, library.require(&state.layer_b.scene_name)?)?;
+    pipeline.upsert_scene(
+        &state.layer_a.scene_name,
+        library.require(&state.layer_a.scene_name)?,
+    )?;
+    pipeline.upsert_scene(
+        &state.layer_b.scene_name,
+        library.require(&state.layer_b.scene_name)?,
+    )?;
 
     let watcher = HotReloader::watch(&cli.scenes).context("hot watcher")?;
 
@@ -210,7 +216,9 @@ fn handle_action(
         }
         // Preset save/recall: in PRESET mode, slot 1-8 with other_layer=true → save,
         //                                   slot 1-8 with other_layer=false → recall.
-        Action::Slot { n, other_layer } if state.active_mode == Mode::Preset && (1..=8).contains(n) => {
+        Action::Slot { n, other_layer }
+            if state.active_mode == Mode::Preset && (1..=8).contains(n) =>
+        {
             let slot = *n;
             if *other_layer {
                 if let Err(e) = presets.save(slot, state, None) {
@@ -219,10 +227,8 @@ fn handle_action(
                     state.active_preset_slot = Some(slot);
                     state.preset_dirty = false;
                 }
-            } else {
-                if let Err(e) = presets.recall(slot, state, lib) {
-                    tracing::warn!("preset recall: {e}");
-                }
+            } else if let Err(e) = presets.recall(slot, state, lib) {
+                tracing::warn!("preset recall: {e}");
             }
             return;
         }

@@ -197,7 +197,10 @@ mod tests {
     fn tab_maps_to_advance_mode() {
         let km = parsed();
         let s = dummy_state();
-        assert_eq!(km.lookup("Tab", Modifier::None, &s), Some(Action::AdvanceMode));
+        assert_eq!(
+            km.lookup("Tab", Modifier::None, &s),
+            Some(Action::AdvanceMode)
+        );
     }
 
     #[test]
@@ -205,7 +208,13 @@ mod tests {
         let km = parsed();
         let s = dummy_state();
         let a = km.lookup("1", Modifier::None, &s).unwrap();
-        assert_eq!(a, Action::Slot { n: 1, other_layer: false });
+        assert_eq!(
+            a,
+            Action::Slot {
+                n: 1,
+                other_layer: false
+            }
+        );
     }
 
     #[test]
@@ -213,7 +222,13 @@ mod tests {
         let km = parsed();
         let s = dummy_state();
         let a = km.lookup("1", Modifier::Shift, &s).unwrap();
-        assert_eq!(a, Action::Slot { n: 1, other_layer: true });
+        assert_eq!(
+            a,
+            Action::Slot {
+                n: 1,
+                other_layer: true
+            }
+        );
     }
 
     #[test]
@@ -221,7 +236,13 @@ mod tests {
         let km = parsed();
         let s = dummy_state();
         let a = km.lookup("Numpad1", Modifier::NumLock, &s).unwrap();
-        assert_eq!(a, Action::Slot { n: 1, other_layer: true });
+        assert_eq!(
+            a,
+            Action::Slot {
+                n: 1,
+                other_layer: true
+            }
+        );
     }
 
     #[test]
@@ -236,14 +257,23 @@ mod tests {
         let km = parsed();
         let s = dummy_state();
         assert_eq!(km.lookup("Esc", Modifier::None, &s), Some(Action::Panic));
-        assert_eq!(km.lookup("Backspace", Modifier::None, &s), Some(Action::Panic));
+        assert_eq!(
+            km.lookup("Backspace", Modifier::None, &s),
+            Some(Action::Panic)
+        );
     }
 
     #[test]
     fn enter_and_backslash_both_toggle_layer() {
         let km = parsed();
         let s = dummy_state();
-        assert_eq!(km.lookup("NumpadEnter", Modifier::None, &s), Some(Action::ToggleLayer));
-        assert_eq!(km.lookup("Backslash", Modifier::None, &s), Some(Action::ToggleLayer));
+        assert_eq!(
+            km.lookup("NumpadEnter", Modifier::None, &s),
+            Some(Action::ToggleLayer)
+        );
+        assert_eq!(
+            km.lookup("Backslash", Modifier::None, &s),
+            Some(Action::ToggleLayer)
+        );
     }
 }

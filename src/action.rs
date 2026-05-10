@@ -57,8 +57,14 @@ mod tests {
 
     #[test]
     fn slot_with_modifier_is_distinct() {
-        let a = Action::Slot { n: 1, other_layer: false };
-        let b = Action::Slot { n: 1, other_layer: true };
+        let a = Action::Slot {
+            n: 1,
+            other_layer: false,
+        };
+        let b = Action::Slot {
+            n: 1,
+            other_layer: true,
+        };
         assert_ne!(a, b);
     }
 

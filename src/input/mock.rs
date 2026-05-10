@@ -80,7 +80,9 @@ fn parse_line(s: &str, lineno: usize) -> Result<ScriptedEvent> {
         .next()
         .ok_or_else(|| Error::Backend(format!("line {lineno}: missing verb")))?;
     if verb != "press" {
-        return Err(Error::Backend(format!("line {lineno}: only 'press' supported, got '{verb}'")));
+        return Err(Error::Backend(format!(
+            "line {lineno}: only 'press' supported, got '{verb}'"
+        )));
     }
     let key = tokens
         .next()
@@ -95,9 +97,9 @@ fn parse_line(s: &str, lineno: usize) -> Result<ScriptedEvent> {
             "shift" => modifier = Modifier::Shift,
             "numlock" => modifier = Modifier::NumLock,
             "repeat" => {
-                let n_str = tokens
-                    .next()
-                    .ok_or_else(|| Error::Backend(format!("line {lineno}: 'repeat' needs count")))?;
+                let n_str = tokens.next().ok_or_else(|| {
+                    Error::Backend(format!("line {lineno}: 'repeat' needs count"))
+                })?;
                 repeat = n_str.parse().map_err(|_| {
                     Error::Backend(format!("line {lineno}: bad repeat count '{n_str}'"))
                 })?;
@@ -106,9 +108,9 @@ fn parse_line(s: &str, lineno: usize) -> Result<ScriptedEvent> {
                 // For Plan 2 mock, treat 'hold N' as 'repeat ceil(N*10)' to
                 // simulate ~10 Hz repeat-while-held. Real continuous hold
                 // behavior is platform input-source territory.
-                let dur_str = tokens
-                    .next()
-                    .ok_or_else(|| Error::Backend(format!("line {lineno}: 'hold' needs seconds")))?;
+                let dur_str = tokens.next().ok_or_else(|| {
+                    Error::Backend(format!("line {lineno}: 'hold' needs seconds"))
+                })?;
                 let dur: f64 = dur_str.parse().map_err(|_| {
                     Error::Backend(format!("line {lineno}: bad hold seconds '{dur_str}'"))
                 })?;
