@@ -3,6 +3,7 @@ pub mod glyphs;
 pub mod grid;
 pub mod render;
 pub mod theme;
+pub mod thread;
 
 #[cfg(feature = "desktop")]
 pub mod desktop;
