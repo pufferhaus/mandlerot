@@ -43,11 +43,10 @@ pub fn build_strip_text(state: &SharedState) -> String {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        s[..max].to_string()
-    }
+    // Char-aware: byte-slicing on a UTF-8 boundary mid-codepoint panics, and
+    // scene names / labels can contain non-ASCII glyphs that get substituted
+    // later. Counting chars caps "visual width" close enough for status text.
+    s.chars().take(max).collect()
 }
 
 /// Rasterize the overlay text into RGBA8 bytes (`STRIP_W × STRIP_H × 4`).

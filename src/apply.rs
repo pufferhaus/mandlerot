@@ -16,7 +16,9 @@ const BLEND_MODES: [BlendMode; 5] = [
 const XFADE_STEP: f32 = 0.05;
 
 pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Result<()> {
-    state.last_action_label = format!("{:?}", action);
+    // Note: last_action_label is set by main.rs::handle_action before
+    // dispatching here, so early-return paths (TapTempo, Trigger,
+    // preset-mode slot save/recall) still surface in the status panel.
     match action {
         Action::AdvanceMode => {
             state.active_mode = match state.active_mode {

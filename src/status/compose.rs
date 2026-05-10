@@ -260,11 +260,10 @@ fn write_hotkeys(g: &mut TextScreen) {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        s[..max].to_string()
-    }
+    // Char-aware: byte-slicing on a UTF-8 boundary mid-codepoint panics.
+    // Counting chars also caps visual width better than byte length for
+    // multibyte glyphs that may sneak into scene names or action labels.
+    s.chars().take(max).collect()
 }
 
 #[cfg(test)]

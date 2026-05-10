@@ -3,7 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(all(feature = "pi", target_os = "linux"))]
 struct NullBackend;
+#[cfg(all(feature = "pi", target_os = "linux"))]
 impl mandlerot::status::Backend for NullBackend {
     fn flush_full(&mut self, _fb: &mandlerot::status::render::Fb) -> mandlerot::Result<()> {
         Ok(())
@@ -329,6 +331,11 @@ fn handle_action(
     presets: &mut PresetStore,
     tap: &mut TapTempo,
 ) {
+    // Set the status panel's "LAST" label up front so early-return paths
+    // (TapTempo, Trigger, preset-mode slot save/recall) still surface in
+    // the UI. apply() used to do this internally; centralizing here avoids
+    // the gaps.
+    state.last_action_label = format!("{:?}", action);
     match action {
         Action::TapTempo => {
             state.tap_tempo_bpm = tap.tap(Instant::now());
