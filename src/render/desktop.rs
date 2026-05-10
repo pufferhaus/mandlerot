@@ -27,9 +27,14 @@ pub struct WinitGlTarget {
     event_loop: EventLoop<()>,
     size: (u32, u32),
     should_exit: bool,
+    key_events: Vec<winit::event::KeyEvent>,
 }
 
 impl WinitGlTarget {
+    pub fn drain_key_events(&mut self) -> Vec<winit::event::KeyEvent> {
+        std::mem::take(&mut self.key_events)
+    }
+
     pub fn new(width: u32, height: u32, title: &str) -> Result<Self> {
         let event_loop =
             EventLoop::new().map_err(|e| Error::Backend(format!("event loop: {e}")))?;
@@ -100,6 +105,7 @@ impl WinitGlTarget {
             event_loop,
             size: (width, height),
             should_exit: false,
+            key_events: Vec::new(),
         })
     }
 }
@@ -127,6 +133,7 @@ impl RenderTarget for WinitGlTarget {
         // and `self.context` mutably/immutably across the &mut self capture.
         let mut should_exit = self.should_exit;
         let mut new_size: Option<(u32, u32)> = None;
+        let mut new_key_events: Vec<winit::event::KeyEvent> = Vec::new();
         #[allow(deprecated)]
         let _status = self.event_loop.pump_events(timeout, |event, target| {
             target.set_control_flow(ControlFlow::Poll);
@@ -139,11 +146,15 @@ impl RenderTarget for WinitGlTarget {
                     WindowEvent::Resized(size) => {
                         new_size = Some((size.width, size.height));
                     }
+                    WindowEvent::KeyboardInput { event, .. } => {
+                        new_key_events.push(event);
+                    }
                     _ => {}
                 }
             }
         });
         self.should_exit = should_exit;
+        self.key_events.extend(new_key_events);
         if let Some((w, h)) = new_size {
             if let (Some(nz_w), Some(nz_h)) = (NonZeroU32::new(w), NonZeroU32::new(h)) {
                 self.surface.resize(&self.context, nz_w, nz_h);
