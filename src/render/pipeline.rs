@@ -29,6 +29,10 @@ pub struct Pipeline {
     /// scene name → compiled program
     scene_programs: BTreeMap<String, glow::Program>,
     overlay_program: Option<glow::Program>,
+    /// 1×320 RGBA8 texture mirroring `AudioHistory::snapshot_rgba`. Created
+    /// up-front (zeros) so binding is always valid; main loop refreshes
+    /// content each frame via `upload_audio_history`.
+    audio_history_texture: Option<glow::Texture>,
 }
 
 impl Pipeline {
@@ -43,6 +47,7 @@ impl Pipeline {
         ];
         let blend_program = compile_program(&gl, QUAD_VERT, BLEND_FRAG)?;
         let quad_vao = create_quad_vao(&gl)?;
+        let audio_history_texture = create_audio_history_texture(&gl);
         Ok(Self {
             gl,
             width,
@@ -55,7 +60,39 @@ impl Pipeline {
             quad_vao,
             scene_programs: BTreeMap::new(),
             overlay_program: None,
+            audio_history_texture,
         })
+    }
+
+    /// Refresh the audio-history texture from a packed RGBA8 snapshot.
+    /// `rgba` must be `1 * AUDIO_HISTORY_LEN * 4` bytes; mismatched lengths
+    /// are silently skipped (test paths may pass empty buffers). Calls into
+    /// `tex_sub_image_2d`; the texture itself is created once in `new()`.
+    pub fn upload_audio_history(&mut self, rgba: &[u8]) {
+        let Some(tex) = self.audio_history_texture else {
+            return;
+        };
+        if rgba.len() != AUDIO_HISTORY_LEN * 4 {
+            return;
+        }
+        unsafe {
+            self.gl.active_texture(glow::TEXTURE2);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                0,
+                0,
+                1,
+                AUDIO_HISTORY_LEN as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(rgba),
+            );
+            // Restore TEXTURE0 as the default active unit so nothing else
+            // gets confused; scene render will re-`active_texture` anyway.
+            self.gl.active_texture(glow::TEXTURE0);
+        }
     }
 
     /// Index of the FBO holding the most recently rendered frame for layer A.
@@ -106,6 +143,15 @@ impl Pipeline {
             self.gl.active_texture(glow::TEXTURE0);
             self.gl.bind_texture(glow::TEXTURE_2D, Some(prev.texture));
             set_uniform_int(&self.gl, *prog, "u_prev", 0);
+            // Bind the rolling audio-history texture on unit 2 (unit 1 is
+            // unused during scene rendering; the blend pass owns 0/1 for its
+            // own layer textures and re-binds them fresh).
+            if let Some(tex) = self.audio_history_texture {
+                self.gl.active_texture(glow::TEXTURE2);
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                set_uniform_int(&self.gl, *prog, "u_audio_history", 2);
+                self.gl.active_texture(glow::TEXTURE0);
+            }
             set_uniform_float(&self.gl, *prog, "u_time", state.time_secs);
             set_uniform_vec2(
                 &self.gl,
@@ -410,6 +456,52 @@ unsafe fn set_uniform_vec4(
 const OVERLAY_VERT: &str = include_str!("../../shaders/quad.vert");
 const OVERLAY_FRAG: &str = include_str!("../../shaders/overlay.glsl");
 
+/// Mirrors `audio::history::HISTORY_LEN`. Duplicated here to avoid a circular
+/// dep into the audio module from render; CI test below pins them together.
+pub const AUDIO_HISTORY_LEN: usize = 320;
+
+fn create_audio_history_texture(gl: &glow::Context) -> Option<glow::Texture> {
+    unsafe {
+        let tex = gl.create_texture().ok()?;
+        gl.active_texture(glow::TEXTURE2);
+        gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+        let zeros = vec![0u8; AUDIO_HISTORY_LEN * 4];
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            1,
+            AUDIO_HISTORY_LEN as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            Some(&zeros),
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::NEAREST as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::NEAREST as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_S,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_T,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.active_texture(glow::TEXTURE0);
+        Some(tex)
+    }
+}
+
 #[cfg(test)]
 #[cfg(feature = "desktop")]
 mod tests {
@@ -418,6 +510,11 @@ mod tests {
     use crate::render::target::RenderTarget;
     use crate::scene::{LoadedScene, SceneMeta};
     use std::sync::Arc;
+
+    #[test]
+    fn audio_history_constant_matches_audio_module() {
+        assert_eq!(AUDIO_HISTORY_LEN, crate::audio::history::HISTORY_LEN);
+    }
 
     fn loaded(name: &str, body: &str) -> LoadedScene {
         let meta_str = format!(

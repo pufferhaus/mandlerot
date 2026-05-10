@@ -16,5 +16,6 @@ uniform float u_param4;
 uniform float u_param5;
 uniform float u_param6;
 uniform float u_param7;
+uniform sampler2D u_audio_history; // RGBA8 1x320: each row = one frame's bands (R=bass, G=lomid, B=himid, A=treble); v=0 oldest, v=1 newest.
 
 varying vec2 v_uv;
