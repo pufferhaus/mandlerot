@@ -1,59 +1,56 @@
-// Cellular automata layer. Each pixel is a "cell". The red channel of
-// `u_prev` carries cell life (0 dead, 1 live). On every frame we sample
-// the eight neighbours via 1-pixel UV offsets, apply Conway's rules, and
-// inject a tiny amount of seed/regen noise so the field never goes
-// permanently dark.
+// Conway CA: red channel carries cell state. Audio-driven reseed prevents
+// convergence to still-lifes or empty board.
 float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
 void main() {
     vec2 px = 1.0 / u_resolution;
-    // 8-neighbour life sum from the previous frame's red channel.
+    vec2 gp = floor(v_uv * u_resolution);
+
+    // 8-neighbour life sum from previous frame red channel.
     float n = 0.0;
-    n += texture2D(u_prev, v_uv + vec2(-px.x, -px.y)).r;
-    n += texture2D(u_prev, v_uv + vec2( 0.0 , -px.y)).r;
-    n += texture2D(u_prev, v_uv + vec2( px.x, -px.y)).r;
-    n += texture2D(u_prev, v_uv + vec2(-px.x,  0.0 )).r;
-    n += texture2D(u_prev, v_uv + vec2( px.x,  0.0 )).r;
-    n += texture2D(u_prev, v_uv + vec2(-px.x,  px.y)).r;
-    n += texture2D(u_prev, v_uv + vec2( 0.0 ,  px.y)).r;
-    n += texture2D(u_prev, v_uv + vec2( px.x,  px.y)).r;
+    n += texture2D(u_prev, v_uv + vec2(-px.x,-px.y)).r + texture2D(u_prev, v_uv + vec2(0.0,-px.y)).r;
+    n += texture2D(u_prev, v_uv + vec2( px.x,-px.y)).r + texture2D(u_prev, v_uv + vec2(-px.x,0.0)).r;
+    n += texture2D(u_prev, v_uv + vec2( px.x, 0.0)).r  + texture2D(u_prev, v_uv + vec2(-px.x,px.y)).r;
+    n += texture2D(u_prev, v_uv + vec2( 0.0,  px.y)).r + texture2D(u_prev, v_uv + vec2( px.x,px.y)).r;
 
     float self_alive = texture2D(u_prev, v_uv).r;
-    // Discrete neighbour count via floor + step thresholds.
     float n_int = floor(n + 0.5);
-    float born = step(2.5, n_int) * step(n_int, 3.5); // n == 3
-    float survive = step(1.5, n_int) * step(n_int, 3.5); // n in {2, 3}
-    float next_alive = max(
-        step(0.5, self_alive) * survive,        // live + (2 or 3) -> live
-        (1.0 - step(0.5, self_alive)) * born    // dead + 3        -> live
-    );
+    float born    = step(2.5, n_int) * step(n_int, 3.5);
+    float survive = step(1.5, n_int) * step(n_int, 3.5);
+    float next_alive = max(step(0.5, self_alive) * survive,
+                           (1.0 - step(0.5, self_alive)) * born);
 
-    // Trail: dying cells fade out instead of snapping to black, so the
-    // viewer perceives motion. `u_param3` = trail (0..0.95).
-    float trail_value = self_alive * u_param3;
-    float life = max(next_alive, trail_value);
+    float life = max(next_alive, self_alive * u_param3); // trail
 
-    // Seed phase + regen noise. During the first second we lay down dense
-    // initial life at the user-supplied density. After that, a tiny amount
-    // of randomness is injected each frame to keep the field dynamic.
+    // Seed phase (first second).
     float t_seed = step(u_time, 1.0);
-    float seed_density = u_param0;
-    float regen = u_param1;
-    float r = hash21(v_uv * u_resolution + floor(u_time * 60.0));
-    float seed = step(1.0 - seed_density, r) * t_seed;
-    float regen_hit = step(1.0 - regen, r) * (1.0 - t_seed);
-    life = max(life, max(seed, regen_hit));
+    life = max(life, step(1.0 - u_param0, hash21(gp + floor(u_time * 60.0))) * t_seed);
 
-    // Colour the cells. Red channel carries the raw life value so the next
-    // frame can recover it via texture2D(u_prev, ...).r; green/blue carry the
-    // hue tint so the visible image is colourful, not just red.
-    float hue = u_param2;
-    vec3 tint = 0.5 + 0.5 * cos(6.2831 * (hue + vec3(0.0, 0.33, 0.66)));
-    // Force the red channel to equal `life` exactly so the CA state survives
-    // the round-trip through the FBO. Tint the green/blue for visuals.
-    vec3 color = vec3(life, tint.g * life, tint.b * life);
+    // Beat/trigger heavy reseed: keeps board lively on every beat.
+    float beat_gate = max(step(0.4, u_beat), step(0.4, u_trigger));
+    life = max(life, step(1.0 - (0.05 + 0.10 * u_param1),
+                          hash21(gp + floor(u_time * 4.0) * 7.3)) * beat_gate * (1.0 - t_seed));
 
-    gl_FragColor = vec4(color, 1.0);
+    // Activity floor: ~2% noise every 2 s — prevents total extinction.
+    float floor_gate = step(mod(u_time, 2.0), 0.05) * (1.0 - t_seed);
+    life = max(life, step(0.98, hash21(gp + floor(u_time * 0.5) * 3.1)) * floor_gate);
+
+    // Bass kick: stamp a 5-cell glider cluster at a hashed anchor.
+    float bkt = floor(u_time * 2.0);
+    vec2 anchor = floor(vec2(hash21(vec2(bkt, 1.0)) * u_resolution.x,
+                             hash21(vec2(bkt, 2.0)) * u_resolution.y));
+    vec2 off = gp - anchor;
+    float is_glider =
+        step(abs(off.x), 0.5) * step(abs(off.y), 0.5) +
+        step(abs(off.x - 1.0), 0.5) * step(abs(off.y), 0.5) +
+        step(abs(off.x - 2.0), 0.5) * step(abs(off.y), 0.5) +
+        step(abs(off.x - 2.0), 0.5) * step(abs(off.y - 1.0), 0.5) +
+        step(abs(off.x - 1.0), 0.5) * step(abs(off.y - 2.0), 0.5);
+    life = max(life, clamp(is_glider, 0.0, 1.0) * step(0.5, u_audio.x) * (1.0 - t_seed));
+
+    // Colour: red = raw life; green/blue = hue tint.
+    vec3 tint = 0.5 + 0.5 * cos(6.2831 * (u_param2 + vec3(0.0, 0.33, 0.66)));
+    gl_FragColor = vec4(life, tint.g * life, tint.b * life, 1.0);
 }
