@@ -9,8 +9,8 @@
 float hash(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 void main() {
-    float aspect = u_resolution.x / u_resolution.y;
-    vec2 uv = (v_uv - 0.5) * vec2(aspect, 1.0);
+    // Use normalized space [-0.5..0.5] so star radii are in consistent units
+    vec2 uv = v_uv - 0.5;
 
     int count = int(u_param0);
     float speed = u_param1 * (1.0 + u_audio.x * 0.8); // bass boosts speed
