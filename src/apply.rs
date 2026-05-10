@@ -16,6 +16,7 @@ const BLEND_MODES: [BlendMode; 5] = [
 const XFADE_STEP: f32 = 0.05;
 
 pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Result<()> {
+    state.last_action_label = format!("{:?}", action);
     match action {
         Action::AdvanceMode => {
             state.active_mode = match state.active_mode {
@@ -107,8 +108,7 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
             // and doesn't own the preset file.
         }
         Action::DebugOverlayToggle => {
-            // No overlay state yet — Plan 3 will introduce it. Silently ignore
-            // so F1 doesn't accidentally fire other actions.
+            state.status_overlay_visible = !state.status_overlay_visible;
         }
     }
     Ok(())

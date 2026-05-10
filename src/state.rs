@@ -71,6 +71,8 @@ pub struct SharedState {
     pub tap_tempo_bpm: f32,
     pub active_preset_slot: Option<u8>,
     pub preset_dirty: bool,
+    pub last_action_label: String,
+    pub status_overlay_visible: bool,
 }
 
 impl SharedState {
@@ -106,6 +108,8 @@ impl SharedState {
             tap_tempo_bpm: 0.0,
             active_preset_slot: None,
             preset_dirty: false,
+            last_action_label: String::new(),
+            status_overlay_visible: false,
         })
     }
 
@@ -154,6 +158,38 @@ mod tests {
     fn blend_mode_int_matches_shader() {
         assert_eq!(BlendMode::Mix.as_int(), 0);
         assert_eq!(BlendMode::Difference.as_int(), 4);
+    }
+}
+
+#[cfg(test)]
+mod tests_plan3 {
+    use super::*;
+
+    fn test_lib() -> crate::scene::SceneLibrary {
+        use crate::scene::SceneMeta;
+        let meta = SceneMeta::parse(
+            "name = \"solid\"\n[[params]]\nslot = 0\nname = \"red\"\nmin = 0.0\nmax = 1.0\ndefault = 1.0\n",
+            "inline",
+        )
+        .unwrap();
+        let mut lib = crate::scene::SceneLibrary::default();
+        lib.upsert(
+            "solid",
+            crate::scene::LoadedScene {
+                meta,
+                fragment_body: "void main() { gl_FragColor = vec4(1.0); }".into(),
+                source_path: std::path::PathBuf::from("inline"),
+            },
+        );
+        lib
+    }
+
+    #[test]
+    fn shared_state_has_status_fields() {
+        let lib = test_lib();
+        let s = SharedState::from_initial(&lib, "solid", "solid", 0.0, BlendMode::Mix).unwrap();
+        assert_eq!(s.last_action_label, "");
+        assert!(!s.status_overlay_visible);
     }
 }
 
