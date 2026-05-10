@@ -1,0 +1,7 @@
+# quickset: select scene 2 on A, advance to PARAM mode,
+# select param slot 0, increment 5 times, then xfade right twice.
+0.0  press 2
+0.5  press Tab
+1.0  press 1
+1.1  press = repeat 5
+2.0  press = repeat 2

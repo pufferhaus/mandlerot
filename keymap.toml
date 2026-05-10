@@ -93,12 +93,20 @@ key = "Numpad9"
 action = "Slot:9"
 
 # Crossfade / param ± (keyboard)
+# "Equal" and "Minus" are mode-aware: param step in PARAM mode, xfade elsewhere.
+# "-" and "=" are raw aliases (MockInput / evdev path).
 [[binding]]
 key = "Minus"
-action = "XfadeMinus"
+action = "ParamMinus"
+[[binding]]
+key = "-"
+action = "ParamMinus"
 [[binding]]
 key = "Equal"
-action = "XfadePlus"
+action = "ParamPlus"
+[[binding]]
+key = "="
+action = "ParamPlus"
 [[binding]]
 key = "BracketLeft"
 action = "XfadeMinus"
