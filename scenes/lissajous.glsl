@@ -31,7 +31,8 @@ void main() {
     glow /= N;
     glow = clamp(glow * 4.0, 0.0, 1.0);
 
-    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + vec3(0.0, 0.33, 0.66)));
+    float hue_drift = phase_anim / 8.0;
+    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + hue_drift + vec3(0.0, 0.33, 0.66)));
     // Phosphor: bright core, dim halo tinted green
     vec3 phosphor = mix(vec3(0.0), col + vec3(0.0, 0.2, 0.0) * glow, glow);
     gl_FragColor = vec4(phosphor, 1.0);

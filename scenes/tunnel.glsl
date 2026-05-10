@@ -36,7 +36,8 @@ void main() {
     float depth_band = floor(tv * stripes);
     float check = mod(stripe + depth_band, 2.0);
 
-    vec3 base_col = 0.5 + 0.5 * cos(6.2831 * (hue + check * 0.5 + vec3(0.0, 0.33, 0.66)));
+    float hue_drift = beat_time / 32.0;
+    vec3 base_col = 0.5 + 0.5 * cos(6.2831 * (hue + hue_drift + check * 0.5 + vec3(0.0, 0.33, 0.66)));
 
     // Vignette: darker at edges, brighter center
     float vignette = 1.0 - clamp(radius * 1.5, 0.0, 0.85);

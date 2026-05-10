@@ -31,9 +31,10 @@ float cwSegDist(vec2 p, vec2 a, vec2 b) {
 
 void main() {
     float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
-    float rot_speed = u_param0 * (1.0 + u_audio.x * 0.6);
+    float rot_speed = u_param0; // toml routes bass to rot_speed
     float thickness = u_param1;
-    float hue       = u_param2;
+    // BPM-locked hue drift so wireframe never sits a single color.
+    float hue       = u_param2 + u_time * bpm / (60.0 * 32.0);
     float persp     = u_param3;
     float sz        = u_param4;
 

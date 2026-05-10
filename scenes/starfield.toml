@@ -17,7 +17,7 @@ max = 3.0
 default = 1.0
 curve = "linear"
 audio_route = "bass"
-audio_amount = 0.8
+audio_amount = 0.6
 audio_polarity = 1.0
 
 [[params]]
@@ -25,8 +25,11 @@ slot = 2
 name = "streak_length"
 min = 0.0
 max = 0.05
-default = 0.015
+default = 0.018
 curve = "linear"
+audio_route = "treble"
+audio_amount = 0.4
+audio_polarity = 1.0
 
 [[params]]
 slot = 3
@@ -35,11 +38,17 @@ min = 0.0
 max = 1.0
 default = 0.0
 curve = "linear"
+audio_route = "himid"
+audio_amount = 0.4
+audio_polarity = 1.0
 
 [[params]]
 slot = 4
 name = "hue_variance"
 min = 0.0
 max = 0.5
-default = 0.1
+default = 0.15
 curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+audio_polarity = 1.0

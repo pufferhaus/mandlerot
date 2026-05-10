@@ -13,9 +13,9 @@ void main() {
     vec2 uv = v_uv - 0.5;
 
     int count = int(u_param0);
-    float speed = u_param1 * (1.0 + u_audio.x * 0.8); // bass boosts speed
+    float speed = u_param1; // toml routes bass to speed
     float streak = u_param2;
-    float hue = u_param3;
+    float hue = u_param3 + u_time * 0.02; // slow continuous hue drift
     float hue_var = u_param4;
 
     vec3 col = vec3(0.0);
