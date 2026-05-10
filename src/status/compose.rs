@@ -128,7 +128,8 @@ fn write_one_param_row(
     };
     g.set(row, col_off + 1, Cell::new(' ', ATTR_NORMAL));
     g.set(row, col_off + 2, Cell::new(cursor, ATTR_BRIGHT));
-    let slot_ch = std::char::from_digit(slot as u32, 10).unwrap_or('?');
+    // Display 1-based to match the keymap (key `1` selects slot index 0).
+    let slot_ch = std::char::from_digit((slot + 1) as u32, 10).unwrap_or('?');
     g.set(row, col_off + 3, Cell::new(slot_ch, ATTR_NORMAL));
 
     let (name, route, base, val) = if let Some(d) = def {
