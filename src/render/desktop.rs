@@ -123,22 +123,35 @@ impl RenderTarget for WinitGlTarget {
     fn pump(&mut self) -> bool {
         use winit::platform::pump_events::EventLoopExtPumpEvents;
         let timeout = Some(std::time::Duration::ZERO);
+        // Collect outcomes from the closure since we can't borrow `self.surface`
+        // and `self.context` mutably/immutably across the &mut self capture.
+        let mut should_exit = self.should_exit;
+        let mut new_size: Option<(u32, u32)> = None;
         #[allow(deprecated)]
-        let _status = self.event_loop.pump_events(timeout, |event, target| {
-            target.set_control_flow(ControlFlow::Poll);
-            if let Event::WindowEvent { event, .. } = event {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        self.should_exit = true;
-                        target.exit();
+        let _status = self
+            .event_loop
+            .pump_events(timeout, |event, target| {
+                target.set_control_flow(ControlFlow::Poll);
+                if let Event::WindowEvent { event, .. } = event {
+                    match event {
+                        WindowEvent::CloseRequested => {
+                            should_exit = true;
+                            target.exit();
+                        }
+                        WindowEvent::Resized(size) => {
+                            new_size = Some((size.width, size.height));
+                        }
+                        _ => {}
                     }
-                    WindowEvent::Resized(new_size) => {
-                        self.size = (new_size.width, new_size.height);
-                    }
-                    _ => {}
                 }
+            });
+        self.should_exit = should_exit;
+        if let Some((w, h)) = new_size {
+            if let (Some(nz_w), Some(nz_h)) = (NonZeroU32::new(w), NonZeroU32::new(h)) {
+                self.surface.resize(&self.context, nz_w, nz_h);
+                self.size = (w, h);
             }
-        });
+        }
         !self.should_exit
     }
 }
