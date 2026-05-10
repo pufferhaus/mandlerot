@@ -17,7 +17,7 @@ max = 2.0
 default = 0.9
 curve = "linear"
 audio_route = "bass"
-audio_amount = 0.4
+audio_amount = 0.08
 audio_polarity = 1.0
 
 [[params]]
