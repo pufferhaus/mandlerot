@@ -1,0 +1,46 @@
+name = "mandelbulb"
+display_name = "Mandelbulb"
+internal_resolution = "360x240"
+
+[[params]]
+slot = 0
+name = "power"
+min = 3.0
+max = 16.0
+default = 8.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "cam_distance"
+min = 1.5
+max = 4.0
+default = 2.5
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.5
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.6
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "detail"
+min = 16.0
+max = 96.0
+default = 48.0
+curve = "linear"
