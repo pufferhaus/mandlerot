@@ -68,6 +68,28 @@ Modal scheme. **Tab** cycles modes: SCENE → PARAM → PRESET → SCENE.
 
 ## Status
 
-Plan 1: ✅ Foundation, scenes, hot-reload.
-Plan 2: ✅ Input, audio FFT, presets.
-Plan 3: pending — status display, systemd, install.
+- Plan 1: Foundation, scenes, hot-reload — done.
+- Plan 2: Input, audio FFT, presets — done.
+- Plan 3: Status display, supervisor, deploy — done.
+
+## Status panel
+
+A 480×320 amber-phosphor SPI TFT (Hosyond 3.5") shows operator state:
+mode, active layer, scene names, params, audio levels, presets, last
+action, hotkeys cheat-sheet.
+
+Desktop dev mode dumps a PNG snapshot of the panel to `target/status.png`
+each frame so you can verify the layout from your laptop without any SPI
+hardware.
+
+## Deploying to a Pi
+
+```
+make build-pi                    # cross-compile to armv7
+make install-pi HOST=mandlerot.local  # one-time install + deploy
+make deploy-restart HOST=mandlerot.local
+```
+
+`install-pi` provisions the user, drops the systemd unit, edits
+`config.txt` for composite + SPI, and copies the binary + scene library.
+The Pi reboots once during provisioning to activate the composite output.
