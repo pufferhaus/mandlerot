@@ -252,6 +252,20 @@ fn main() -> anyhow::Result<()> {
         if let Err(e) = pipeline.frame(&state, target.dimensions().0, target.dimensions().1) {
             tracing::error!("frame error: {e}");
         }
+        if state.status_overlay_visible {
+            let strip_text = mandlerot::overlay::build_strip_text(&state);
+            let rgba = mandlerot::overlay::rasterize(&strip_text);
+            let (tw, th) = target.dimensions();
+            pipeline.draw_overlay_strip(
+                &rgba,
+                mandlerot::overlay::STRIP_W,
+                mandlerot::overlay::STRIP_H,
+                4,
+                4,
+                tw,
+                th,
+            );
+        }
         target.present()?;
         if !target.pump() {
             break;

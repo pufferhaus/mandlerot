@@ -24,6 +24,7 @@ pub struct Pipeline {
     quad_vao: glow::VertexArray,
     /// scene name → compiled program
     scene_programs: BTreeMap<String, glow::Program>,
+    overlay_program: Option<glow::Program>,
 }
 
 impl Pipeline {
@@ -41,6 +42,7 @@ impl Pipeline {
             blend_program,
             quad_vao,
             scene_programs: BTreeMap::new(),
+            overlay_program: None,
         })
     }
 
@@ -162,6 +164,99 @@ impl Pipeline {
         Ok(())
     }
 
+    /// Upload an RGBA strip and draw it at `(origin_x, origin_y)` on the
+    /// currently bound framebuffer. Caller is responsible for binding the right
+    /// target first.
+    pub fn draw_overlay_strip(
+        &mut self,
+        rgba: &[u8],
+        strip_w: u32,
+        strip_h: u32,
+        origin_x: u32,
+        origin_y: u32,
+        target_w: u32,
+        target_h: u32,
+    ) {
+        unsafe {
+            // Lazily create the overlay program on first use.
+            if self.overlay_program.is_none() {
+                let prog = compile_program(&self.gl, OVERLAY_VERT, OVERLAY_FRAG).ok();
+                self.overlay_program = prog;
+            }
+            let Some(prog) = self.overlay_program else {
+                return;
+            };
+            let tex = match self.gl.create_texture() {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                strip_w as i32,
+                strip_h as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                Some(rgba),
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::LINEAR as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::LINEAR as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+
+            self.gl.use_program(Some(prog));
+            self.gl.active_texture(glow::TEXTURE0);
+            set_uniform_int(&self.gl, prog, "u_overlay_tex", 0);
+            set_uniform_vec2(
+                &self.gl,
+                prog,
+                "u_resolution",
+                target_w as f32,
+                target_h as f32,
+            );
+            set_uniform_vec2(
+                &self.gl,
+                prog,
+                "u_overlay_size",
+                strip_w as f32,
+                strip_h as f32,
+            );
+            set_uniform_vec2(
+                &self.gl,
+                prog,
+                "u_overlay_origin",
+                origin_x as f32,
+                origin_y as f32,
+            );
+            self.gl.enable(glow::BLEND);
+            self.gl
+                .blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            self.gl.bind_vertex_array(Some(self.quad_vao));
+            self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+            self.gl.disable(glow::BLEND);
+            self.gl.delete_texture(tex);
+        }
+    }
+
     /// Read default framebuffer back into RGBA8 vec (for headless tests).
     pub fn read_default_pixels(&self, w: u32, h: u32) -> Vec<u8> {
         let mut pixels = vec![0u8; (w * h * 4) as usize];
@@ -263,6 +358,9 @@ unsafe fn set_uniform_vec4(
     let loc = gl.get_uniform_location(prog, name);
     gl.uniform_4_f32(loc.as_ref(), x, y, z, w);
 }
+
+const OVERLAY_VERT: &str = include_str!("../../shaders/quad.vert");
+const OVERLAY_FRAG: &str = include_str!("../../shaders/overlay.glsl");
 
 #[cfg(test)]
 #[cfg(feature = "desktop")]

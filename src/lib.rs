@@ -28,5 +28,7 @@ pub mod tap_tempo;
 
 pub mod status;
 
+pub mod overlay;
+
 #[cfg(feature = "desktop")]
 pub mod headless;
