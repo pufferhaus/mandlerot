@@ -1,0 +1,44 @@
+name = "metaballs"
+display_name = "Metaballs"
+
+[[params]]
+slot = 0
+name = "ball_count"
+min = 2.0
+max = 10.0
+default = 6.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "radius_scale"
+min = 0.05
+max = 0.3
+default = 0.12
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.7
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "threshold"
+min = 0.5
+max = 3.0
+default = 1.5
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "motion_speed"
+min = 0.0
+max = 2.0
+default = 0.6
+curve = "linear"
