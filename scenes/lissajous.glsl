@@ -7,9 +7,6 @@
 // Lissajous curve rendered as summed Gaussian globs over ~80 t samples.
 // BPM drives a slow phase animation; treble tightens the glow radius.
 void main() {
-    float aspect = u_resolution.x / u_resolution.y;
-    vec2 uv = (v_uv - 0.5) * vec2(aspect, 1.0);
-
     float bpm = u_bpm > 1.0 ? u_bpm : 120.0;
     float phase_anim = u_time * bpm / 60.0 * 0.25; // quarter-beat drift
 
@@ -19,15 +16,16 @@ void main() {
     float radius = u_param3;
     float hue = u_param4;
 
+    // Work in normalized space [-0.5..0.5] for distance calc
+    vec2 uv_n = v_uv - 0.5; // x in [-0.5..0.5] regardless of aspect
+
     // Accumulate glow from N curve samples
     float glow = 0.0;
     float N = 80.0;
-    float r2 = radius * radius * aspect * aspect;
     for (int i = 0; i < 80; i++) {
         float t = 6.2831 * float(i) / N;
         vec2 p = vec2(sin(a * t + phi), sin(b * t)) * 0.45;
-        vec2 d = uv - p;
-        d.x /= aspect;
+        vec2 d = uv_n - p;
         glow += exp(-dot(d, d) / (radius * radius));
     }
     glow /= N;

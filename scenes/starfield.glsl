@@ -37,7 +37,7 @@ void main() {
         float along = dot(d, streak_dir);
         float perp  = abs(d.x * streak_dir.y - d.y * streak_dir.x);
 
-        float in_streak = float(along >= 0.0 && along <= streak && perp < 0.003);
+        float in_streak = step(0.0, along) * step(along, streak) * step(perp, 0.003);
         float brightness = depth * depth; // brighter at edges
         float star_hue = hue + hue_var * (hash(fi * 5.1) - 0.5) * 2.0;
         vec3 star_col = 0.5 + 0.5 * cos(6.2831 * (star_hue + vec3(0.0, 0.33, 0.66)));
