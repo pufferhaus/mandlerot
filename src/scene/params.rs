@@ -55,6 +55,30 @@ impl ParamMap {
         out
     }
 
+    /// Compute `(slot → effective value)` taking audio routing and bypass
+    /// into account. `bands[0..4]` = [bass, lomid, himid, treble].
+    pub fn effective_slot_values(&self, bands: &[f32; 4], bypass: bool) -> [f32; 8] {
+        let mut out = self.slot_values();
+        if bypass {
+            return out;
+        }
+        for d in &self.defs {
+            if let Some(base) = self.values.get(&d.name) {
+                let band_value = match d.audio_route {
+                    crate::scene::AudioRoute::None | crate::scene::AudioRoute::Beat => 0.0,
+                    crate::scene::AudioRoute::Bass => bands[0],
+                    crate::scene::AudioRoute::Lomid => bands[1],
+                    crate::scene::AudioRoute::Himid => bands[2],
+                    crate::scene::AudioRoute::Treble => bands[3],
+                };
+                let extra = d.audio_amount * d.audio_polarity * band_value;
+                let v = (*base + extra * (d.max - d.min)).clamp(d.min, d.max);
+                out[d.slot as usize] = v;
+            }
+        }
+        out
+    }
+
     pub fn defs(&self) -> &[ParamDef] {
         &self.defs
     }
@@ -111,5 +135,47 @@ mod tests {
         p.set("zoom", 5.0);
         p.reset_to_defaults();
         assert_eq!(p.get("zoom"), Some(1.0));
+    }
+}
+
+#[cfg(test)]
+mod audio_route_tests {
+    use super::*;
+    use crate::scene::SceneMeta;
+
+    fn meta_with_route(name: &str, route: &str, amount: f32) -> SceneMeta {
+        let s = format!(
+            r#"
+                name = "x"
+                [[params]]
+                slot = 0
+                name = "{name}"
+                min = 0.0
+                max = 1.0
+                default = 0.5
+                audio_route = "{route}"
+                audio_amount = {amount}
+            "#
+        );
+        SceneMeta::parse(&s, "inline").unwrap()
+    }
+
+    #[test]
+    fn bass_route_adds_audio_to_base() {
+        let m = meta_with_route("zoom", "bass", 0.5);
+        let p = ParamMap::from_scene(&m);
+        let bands = [0.4, 0.0, 0.0, 0.0];
+        let slots = p.effective_slot_values(&bands, false);
+        // base 0.5 + 0.5 * 0.4 * 1.0 (range) = 0.7
+        assert!((slots[0] - 0.7).abs() < 1e-5);
+    }
+
+    #[test]
+    fn bypass_returns_base_only() {
+        let m = meta_with_route("zoom", "treble", 0.5);
+        let p = ParamMap::from_scene(&m);
+        let bands = [0.0, 0.0, 0.0, 0.9];
+        let slots = p.effective_slot_values(&bands, true);
+        assert!((slots[0] - 0.5).abs() < 1e-5);
     }
 }
