@@ -18,6 +18,8 @@ glow = "0.14"
 notify = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = "1"
+rustfft = "6"
+cpal = "0.15"
 
 # desktop backend (default)
 winit = { version = "0.30", optional = true }
@@ -30,6 +32,12 @@ khronos-egl = { version = "6", features = ["dynamic"], optional = true }
 gbm = { version = "0.15", default-features = false, features = ["drm-support"], optional = true }
 drm = { version = "0.12", optional = true }
 evdev = { version = "0.13", optional = true }
+
+# cpal 0.15 on macOS pulls in coreaudio-sys; 0.2.17 bumped to edition2024
+# which requires Rust 1.85+. Pin to <0.2.17 to stay compatible with our
+# 1.83 toolchain.
+[target.'cfg(target_os = "macos")'.dependencies]
+coreaudio-sys = { version = ">=0.2.0, <0.2.17", default-features = false }
 
 [features]
 default = ["desktop"]

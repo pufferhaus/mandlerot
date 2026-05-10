@@ -20,5 +20,7 @@ pub mod hot_reload;
 
 pub mod input;
 
+pub mod audio;
+
 #[cfg(feature = "desktop")]
 pub mod headless;
