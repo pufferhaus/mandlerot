@@ -83,8 +83,11 @@ void main() {
     float beats = u_time * bpm / 60.0;
 
     float eye_sz = u_param4;
-    vec2 lc = vec2(-0.10, 0.0);
-    vec2 rc = vec2( 0.10, 0.0);
+    // Hardcoded gap (in NDC.x) keeps inner corners apart regardless of size,
+    // so eyebrows never merge in the middle.
+    float gap = 0.18;
+    vec2 lc = vec2(-gap, 0.0);
+    vec2 rc = vec2( gap, 0.0);
 
     float lt = u_time * u_param1;
     vec2 look = vec2(sin(lt * 0.7), sin(lt * 0.5 + 1.7)) * 0.5;
