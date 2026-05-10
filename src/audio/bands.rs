@@ -49,6 +49,15 @@ impl BandBinner {
     /// Returns 4 normalized band magnitudes (mean log magnitude per band).
     /// Magnitudes are NOT normalized to [0,1] — that's the envelope follower's job.
     pub fn process(&self, samples: &[f32; FFT_SIZE]) -> [f32; 4] {
+        let (bands, _mags) = self.process_with_mags(samples);
+        bands
+    }
+
+    /// Same as `process` but also returns the linear FFT magnitudes (one per
+    /// bin in the lower half of the spectrum). Useful for downstream
+    /// consumers like the spectral-flux beat detector that need raw
+    /// per-bin magnitudes rather than the 4-band reduction.
+    pub fn process_with_mags(&self, samples: &[f32; FFT_SIZE]) -> ([f32; 4], Vec<f32>) {
         let mut buf: Vec<Complex32> = samples
             .iter()
             .zip(&self.window)
@@ -64,7 +73,13 @@ impl BandBinner {
         let lomid = mean_log_mag(&mags, self.ranges.lomid);
         let himid = mean_log_mag(&mags, self.ranges.himid);
         let treble = mean_log_mag(&mags, self.ranges.treble);
-        [bass, lomid, himid, treble]
+        ([bass, lomid, himid, treble], mags)
+    }
+}
+
+impl Default for BandBinner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -97,8 +112,8 @@ mod tests {
 
     fn sine(freq_hz: f32, n: usize) -> [f32; FFT_SIZE] {
         let mut out = [0.0; FFT_SIZE];
-        for i in 0..n.min(FFT_SIZE) {
-            out[i] = (TAU * freq_hz * i as f32 / SAMPLE_RATE).sin();
+        for (i, sample) in out.iter_mut().enumerate().take(n.min(FFT_SIZE)) {
+            *sample = (TAU * freq_hz * i as f32 / SAMPLE_RATE).sin();
         }
         out
     }

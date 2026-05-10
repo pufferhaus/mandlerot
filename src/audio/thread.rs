@@ -92,7 +92,7 @@ pub fn spawn(
                 rb.read_latest(&mut window)
             };
             if got {
-                let raw_bands = binner.process(&window);
+                let (raw_bands, spec_mags) = binner.process_with_mags(&window);
                 // Convert log magnitudes to linear-ish, then envelope+gain.
                 let mut out = [0.0; 4];
                 for i in 0..4 {
@@ -102,10 +102,9 @@ pub fn spawn(
                     out[i] = gains[i].normalize(envs[i].value, 50);
                 }
                 atomic.store_bands(out);
-                // Beat detection on the same window's mags.
-                // Re-derive linear mags for beat (sum-of-positive-flux):
-                let mags: Vec<f32> = window.iter().take(FFT_SIZE / 2).map(|x| x.abs()).collect();
-                beat.update(&mags);
+                // Beat detection on the same window's spectral magnitudes
+                // (linear, per-bin) — NOT on time-domain PCM samples.
+                beat.update(&spec_mags);
                 atomic.store_beat(beat.trigger);
             }
             std::thread::sleep(dt);
