@@ -1,0 +1,45 @@
+name = "starfield"
+display_name = "Starfield"
+
+[[params]]
+slot = 0
+name = "density"
+min = 10.0
+max = 200.0
+default = 60.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "speed"
+min = 0.0
+max = 3.0
+default = 1.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.8
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "streak_length"
+min = 0.0
+max = 0.05
+default = 0.015
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "hue_variance"
+min = 0.0
+max = 0.5
+default = 0.1
+curve = "linear"
