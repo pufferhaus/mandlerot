@@ -1,3 +1,4 @@
+pub mod compose;
 pub mod glyphs;
 pub mod grid;
 pub mod theme;
