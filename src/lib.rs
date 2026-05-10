@@ -12,6 +12,10 @@ pub mod render;
 
 pub mod state;
 
+pub mod action;
+
+pub mod apply;
+
 pub mod hot_reload;
 
 #[cfg(feature = "desktop")]
