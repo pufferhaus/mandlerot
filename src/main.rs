@@ -53,6 +53,9 @@ struct Cli {
     /// Replay a scripted input file (no audio capture).
     #[arg(long)]
     replay: Option<PathBuf>,
+    /// Open a separate window showing the SPI status panel preview (desktop only).
+    #[arg(long)]
+    status_window: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -112,7 +115,7 @@ fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Status panel
+    // Status panel — backend selection and optional live preview window.
     let status_backend: Box<dyn mandlerot::status::Backend> = {
         #[cfg(all(feature = "pi", target_os = "linux"))]
         {
@@ -126,9 +129,17 @@ fn main() -> anyhow::Result<()> {
         }
         #[cfg(not(all(feature = "pi", target_os = "linux")))]
         {
-            Box::new(mandlerot::status::desktop::DesktopPngBackend::new(
-                "target/status.png",
-            )) as Box<_>
+            if cli.status_window {
+                let be = mandlerot::status::desktop::DesktopBufferBackend::new();
+                // Hand a clone of the shared buffer to the render target so it
+                // can open (and paint) the second preview window.
+                target.enable_status_window(be.buf.clone());
+                Box::new(be) as Box<_>
+            } else {
+                Box::new(mandlerot::status::desktop::DesktopPngBackend::new(
+                    "target/status.png",
+                )) as Box<_>
+            }
         }
     };
     let (status_handle, _status_join) =
@@ -297,6 +308,8 @@ fn main() -> anyhow::Result<()> {
             );
         }
         target.present()?;
+        #[cfg(all(feature = "desktop", not(feature = "pi")))]
+        target.paint_status();
         if !target.pump() {
             break;
         }
