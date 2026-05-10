@@ -32,5 +32,7 @@ pub mod overlay;
 
 pub mod supervisor;
 
+pub mod watchdog;
+
 #[cfg(feature = "desktop")]
 pub mod headless;

@@ -133,6 +133,8 @@ fn main() -> anyhow::Result<()> {
         mandlerot::status::thread::spawn(status_backend, library.clone());
 
     let mut supervisor = mandlerot::supervisor::Supervisor::new();
+    #[cfg(target_os = "linux")]
+    let mut watchdog = mandlerot::watchdog::Watchdog::open("/dev/watchdog").ok();
     let mut tap_tempo = TapTempo::new();
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
     let mut input_winit = mandlerot::input::winit_src::WinitInputState::default();
@@ -157,6 +159,11 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         let frame_start = Instant::now();
+
+        #[cfg(target_os = "linux")]
+        if let Some(w) = watchdog.as_mut() {
+            w.pet();
+        }
 
         // Hot-reload
         while let Some(evt) = watcher.try_recv() {
