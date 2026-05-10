@@ -87,7 +87,8 @@ fn main() -> anyhow::Result<()> {
         }
 
         state.time_secs = start.elapsed().as_secs_f32();
-        if let Err(e) = pipeline.frame(&state, cfg.render.width, cfg.render.height) {
+        let (fb_w, fb_h) = target.dimensions();
+        if let Err(e) = pipeline.frame(&state, fb_w, fb_h) {
             tracing::error!("frame error: {e}");
         }
         target.present()?;
