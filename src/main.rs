@@ -180,6 +180,35 @@ fn main() -> anyhow::Result<()> {
         // doing so on top of the audio-thread decay would compound rates and
         // shorten manual `Action::Trigger` pulses unpredictably.
 
+        // Lazy-compile any scene referenced by state but not yet in the pipeline.
+        // Actions like SetSceneByIndex / scene cycle / preset recall change
+        // `scene_name` without compiling; do it here so the next render finds
+        // a program. Compile failures fall back to safe-scene to keep visuals
+        // alive.
+        for layer_name in [&state.layer_a.scene_name, &state.layer_b.scene_name] {
+            if pipeline.has_scene(layer_name) {
+                continue;
+            }
+            match library.require(layer_name) {
+                Ok(scene) => {
+                    if let Err(e) = pipeline.upsert_scene(layer_name, scene) {
+                        tracing::warn!("compile {layer_name}: {e}; falling back to safe-scene");
+                    }
+                }
+                Err(_) => {
+                    tracing::warn!("scene {layer_name} not in library; falling back to safe-scene");
+                }
+            }
+        }
+        // If either layer's scene still failed to compile, swap that layer to
+        // safe-scene for this frame.
+        if !pipeline.has_scene(&state.layer_a.scene_name) {
+            state.layer_a.scene_name = "__safe__".to_string();
+        }
+        if !pipeline.has_scene(&state.layer_b.scene_name) {
+            state.layer_b.scene_name = "__safe__".to_string();
+        }
+
         if let Err(e) = pipeline.frame(&state, target.dimensions().0, target.dimensions().1) {
             tracing::error!("frame error: {e}");
         }
