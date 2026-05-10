@@ -18,30 +18,30 @@ float hash11(float p) {
     return fract(sin(p * 12.9898) * 43758.5453);
 }
 
-// Upper lid centerline in local (x_norm, y) coords where x_norm: 0=inner, 1=outer
+// All curves and thicknesses defined in local (x_norm, y_norm) coords where
+// x_norm 0..1 = inner→outer and y_norm is in the same units as x_norm (so y
+// extends ~0.5 above and below the eye centerline at default settings).
 float upper_lid_y(float x) {
-    // Gentle rising curve, slightly faster at outer end.
-    return -0.02 + 0.22 * x + 0.06 * x * x;
+    // Pronounced rising curve to outer corner.
+    return -0.05 + 0.45 * x + 0.10 * x * x;
 }
 float upper_lid_t(float x) {
-    // Tapered thickness: thin at inner, thickest around 0.6, tapers at outer corner.
-    return 0.060 * sin(3.14159 * pow(x, 0.55));
+    // Tapered thickness: thin at inner, thickest mid-to-outer.
+    return 0.110 * sin(3.14159 * pow(x, 0.55));
 }
 
-// Lower lash centerline + thickness
 float lower_lash_y(float x) {
-    return -0.18 + 0.08 * x;
+    return -0.32 + 0.18 * x;
 }
 float lower_lash_t(float x) {
-    return 0.010 * (1.0 - 0.6 * x);
+    return 0.020 * (1.0 - 0.6 * x);
 }
 
-// Eyebrow centerline + thickness (parallel to upper lid, offset up)
 float brow_y(float x) {
-    return upper_lid_y(x) + 0.14;
+    return upper_lid_y(x) + 0.26;
 }
 float brow_t(float x) {
-    return 0.014 * sin(3.14159 * pow(x, 0.45));
+    return 0.028 * sin(3.14159 * pow(x, 0.45));
 }
 
 void main() {
@@ -57,8 +57,10 @@ void main() {
     float beats = u_time * bpm / 60.0;
 
     float eye_sz = u_param4;
-    vec2 lc = vec2(-eye_sz * 1.05, 0.0);
-    vec2 rc = vec2( eye_sz * 1.05, 0.0);
+    // Inner corners sit a small fixed gap from screen center so eyes can
+    // grow large (eye_sz up to 1.1) without the inner edges colliding.
+    vec2 lc = vec2(-0.20, 0.0);
+    vec2 rc = vec2( 0.20, 0.0);
 
     // Look direction
     float lt = u_time * u_param1;
