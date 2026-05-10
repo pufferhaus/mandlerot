@@ -1,8 +1,6 @@
 //! Headless render runner — opens a hidden window for context, draws N
 //! frames, optionally writes PNGs. Used for smoke tests and CI.
 
-#![cfg(feature = "desktop")]
-
 use std::path::Path;
 use std::sync::Arc;
 

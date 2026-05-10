@@ -59,7 +59,13 @@ impl Pipeline {
         self.scene_programs.contains_key(name)
     }
 
-    fn render_layer_to(&self, target: &Fbo, scene_name: &str, params: &ParamMap, state: &SharedState) -> Result<()> {
+    fn render_layer_to(
+        &self,
+        target: &Fbo,
+        scene_name: &str,
+        params: &ParamMap,
+        state: &SharedState,
+    ) -> Result<()> {
         let prog = self
             .scene_programs
             .get(scene_name)
@@ -98,7 +104,12 @@ impl Pipeline {
     }
 
     /// Bind whatever the caller wants as the final destination, then call.
-    pub fn render_blend_to_default(&self, default_fb_w: u32, default_fb_h: u32, state: &SharedState) {
+    pub fn render_blend_to_default(
+        &self,
+        default_fb_w: u32,
+        default_fb_h: u32,
+        state: &SharedState,
+    ) {
         unsafe {
             self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             self.gl
@@ -107,10 +118,12 @@ impl Pipeline {
             self.gl.clear(glow::COLOR_BUFFER_BIT);
             self.gl.use_program(Some(self.blend_program));
             self.gl.active_texture(glow::TEXTURE0);
-            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.fbo_a.texture));
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_a.texture));
             set_uniform_int(&self.gl, self.blend_program, "u_layer_a", 0);
             self.gl.active_texture(glow::TEXTURE1);
-            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.fbo_b.texture));
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b.texture));
             set_uniform_int(&self.gl, self.blend_program, "u_layer_b", 1);
             set_uniform_float(&self.gl, self.blend_program, "u_xfade", state.xfade);
             set_uniform_int(
@@ -125,8 +138,18 @@ impl Pipeline {
     }
 
     pub fn frame(&self, state: &SharedState, default_fb_w: u32, default_fb_h: u32) -> Result<()> {
-        self.render_layer_to(&self.fbo_a, &state.layer_a.scene_name, &state.layer_a.params, state)?;
-        self.render_layer_to(&self.fbo_b, &state.layer_b.scene_name, &state.layer_b.params, state)?;
+        self.render_layer_to(
+            &self.fbo_a,
+            &state.layer_a.scene_name,
+            &state.layer_a.params,
+            state,
+        )?;
+        self.render_layer_to(
+            &self.fbo_b,
+            &state.layer_b.scene_name,
+            &state.layer_b.params,
+            state,
+        )?;
         self.render_blend_to_default(default_fb_w, default_fb_h, state);
         Ok(())
     }
@@ -208,6 +231,36 @@ fn create_quad_vao(gl: &glow::Context) -> Result<glow::VertexArray> {
     }
 }
 
+fn bytemuck_cast(s: &[f32]) -> &[u8] {
+    // SAFETY: f32 has well-defined byte layout.
+    unsafe { std::slice::from_raw_parts(s.as_ptr() as *const u8, std::mem::size_of_val(s)) }
+}
+
+unsafe fn set_uniform_float(gl: &glow::Context, prog: glow::Program, name: &str, v: f32) {
+    let loc = gl.get_uniform_location(prog, name);
+    gl.uniform_1_f32(loc.as_ref(), v);
+}
+unsafe fn set_uniform_int(gl: &glow::Context, prog: glow::Program, name: &str, v: i32) {
+    let loc = gl.get_uniform_location(prog, name);
+    gl.uniform_1_i32(loc.as_ref(), v);
+}
+unsafe fn set_uniform_vec2(gl: &glow::Context, prog: glow::Program, name: &str, x: f32, y: f32) {
+    let loc = gl.get_uniform_location(prog, name);
+    gl.uniform_2_f32(loc.as_ref(), x, y);
+}
+unsafe fn set_uniform_vec4(
+    gl: &glow::Context,
+    prog: glow::Program,
+    name: &str,
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+) {
+    let loc = gl.get_uniform_location(prog, name);
+    gl.uniform_4_f32(loc.as_ref(), x, y, z, w);
+}
+
 #[cfg(test)]
 #[cfg(feature = "desktop")]
 mod tests {
@@ -252,34 +305,4 @@ default = 0.0
         // old program still present
         assert!(pipe.has_scene("foo"));
     }
-}
-
-fn bytemuck_cast(s: &[f32]) -> &[u8] {
-    // SAFETY: f32 has well-defined byte layout.
-    unsafe { std::slice::from_raw_parts(s.as_ptr() as *const u8, std::mem::size_of_val(s)) }
-}
-
-unsafe fn set_uniform_float(gl: &glow::Context, prog: glow::Program, name: &str, v: f32) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_1_f32(loc.as_ref(), v);
-}
-unsafe fn set_uniform_int(gl: &glow::Context, prog: glow::Program, name: &str, v: i32) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_1_i32(loc.as_ref(), v);
-}
-unsafe fn set_uniform_vec2(gl: &glow::Context, prog: glow::Program, name: &str, x: f32, y: f32) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_2_f32(loc.as_ref(), x, y);
-}
-unsafe fn set_uniform_vec4(
-    gl: &glow::Context,
-    prog: glow::Program,
-    name: &str,
-    x: f32,
-    y: f32,
-    z: f32,
-    w: f32,
-) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_4_f32(loc.as_ref(), x, y, z, w);
 }

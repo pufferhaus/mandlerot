@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -41,8 +41,7 @@ fn main() -> anyhow::Result<()> {
 
     let cfg = Config::load(&cli.config).context("load config")?;
     let library = SceneLibrary::load_dir(&cli.scenes).context("load scenes")?;
-    let blend_mode =
-        BlendMode::from_str(&cfg.initial.blend_mode).unwrap_or(BlendMode::Mix);
+    let blend_mode = BlendMode::parse(&cfg.initial.blend_mode).unwrap_or(BlendMode::Mix);
     let mut state = SharedState::from_initial(
         &library,
         &cfg.initial.scene_a,
@@ -52,8 +51,11 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
-    let mut target: Box<dyn RenderTarget> =
-        Box::new(WinitGlTarget::new(cfg.render.width, cfg.render.height, "mandleROT")?);
+    let mut target: Box<dyn RenderTarget> = Box::new(WinitGlTarget::new(
+        cfg.render.width,
+        cfg.render.height,
+        "mandleROT",
+    )?);
     #[cfg(all(feature = "pi", target_os = "linux"))]
     let mut target: Box<dyn RenderTarget> = {
         use mandlerot::render::pi::PiTarget;
@@ -61,8 +63,14 @@ fn main() -> anyhow::Result<()> {
     };
     let gl: Arc<glow::Context> = target.gl();
     let mut pipeline = Pipeline::new(gl, cfg.render.width, cfg.render.height)?;
-    pipeline.upsert_scene(&state.layer_a.scene_name, library.require(&state.layer_a.scene_name)?)?;
-    pipeline.upsert_scene(&state.layer_b.scene_name, library.require(&state.layer_b.scene_name)?)?;
+    pipeline.upsert_scene(
+        &state.layer_a.scene_name,
+        library.require(&state.layer_a.scene_name)?,
+    )?;
+    pipeline.upsert_scene(
+        &state.layer_b.scene_name,
+        library.require(&state.layer_b.scene_name)?,
+    )?;
 
     let mut library = library; // make mutable for hot-reload
     let watcher = HotReloader::watch(&cli.scenes).context("hot watcher")?;
@@ -106,7 +114,7 @@ fn main() -> anyhow::Result<()> {
 
 fn handle_reload(
     evt: ReloadEvent,
-    scenes_dir: &PathBuf,
+    scenes_dir: &Path,
     library: &mut SceneLibrary,
     pipeline: &mut Pipeline,
 ) {

@@ -35,10 +35,7 @@ impl SceneLibrary {
             };
             let meta_path = path.with_extension("toml");
             if !meta_path.exists() {
-                tracing::warn!(
-                    "scene {} has no .toml metadata, skipping",
-                    path.display()
-                );
+                tracing::warn!("scene {} has no .toml metadata, skipping", path.display());
                 continue;
             }
             let body = std::fs::read_to_string(&path)?;

@@ -20,7 +20,10 @@ fn scenes_dir() -> PathBuf {
 fn every_scene_renders_60_frames() {
     let lib = SceneLibrary::load_dir(&scenes_dir()).expect("load scenes");
     let names: Vec<String> = lib.names().map(|s| s.to_string()).collect();
-    assert!(names.len() >= 3, "expected at least 3 scenes, got {names:?}");
+    assert!(
+        names.len() >= 3,
+        "expected at least 3 scenes, got {names:?}"
+    );
 
     for name in &names {
         let run = HeadlessRun {

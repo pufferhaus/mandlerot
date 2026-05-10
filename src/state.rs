@@ -10,7 +10,7 @@ pub enum BlendMode {
 }
 
 impl BlendMode {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "mix" => Some(Self::Mix),
             "add" => Some(Self::Add),
@@ -76,10 +76,10 @@ mod tests {
 
     #[test]
     fn blend_mode_parses_known_strings() {
-        assert_eq!(BlendMode::from_str("mix"), Some(BlendMode::Mix));
-        assert_eq!(BlendMode::from_str("multiply"), Some(BlendMode::Multiply));
-        assert_eq!(BlendMode::from_str("mult"), Some(BlendMode::Multiply));
-        assert_eq!(BlendMode::from_str("nonsense"), None);
+        assert_eq!(BlendMode::parse("mix"), Some(BlendMode::Mix));
+        assert_eq!(BlendMode::parse("multiply"), Some(BlendMode::Multiply));
+        assert_eq!(BlendMode::parse("mult"), Some(BlendMode::Multiply));
+        assert_eq!(BlendMode::parse("nonsense"), None);
     }
 
     #[test]

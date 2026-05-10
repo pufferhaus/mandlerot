@@ -12,10 +12,7 @@ pub struct ParamMap {
 impl ParamMap {
     pub fn from_scene(meta: &SceneMeta) -> Self {
         let defs = meta.params.clone();
-        let values = defs
-            .iter()
-            .map(|p| (p.name.clone(), p.default))
-            .collect();
+        let values = defs.iter().map(|p| (p.name.clone(), p.default)).collect();
         Self { defs, values }
     }
 
@@ -60,11 +57,7 @@ mod tests {
     use crate::scene::meta::SceneMeta;
 
     fn meta() -> SceneMeta {
-        SceneMeta::parse(
-            include_str!("../../tests/fixtures/good_scene.toml"),
-            "good",
-        )
-        .unwrap()
+        SceneMeta::parse(include_str!("../../tests/fixtures/good_scene.toml"), "good").unwrap()
     }
 
     #[test]

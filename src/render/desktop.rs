@@ -1,7 +1,5 @@
 //! Desktop GL context via winit + glutin. Used for macOS/Linux dev.
 
-#![cfg(feature = "desktop")]
-
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -33,8 +31,8 @@ pub struct WinitGlTarget {
 
 impl WinitGlTarget {
     pub fn new(width: u32, height: u32, title: &str) -> Result<Self> {
-        let event_loop = EventLoop::new()
-            .map_err(|e| Error::Backend(format!("event loop: {e}")))?;
+        let event_loop =
+            EventLoop::new().map_err(|e| Error::Backend(format!("event loop: {e}")))?;
 
         // winit 0.30: use WindowAttributes instead of deprecated WindowBuilder
         let window_attributes = Window::default_attributes()
@@ -44,13 +42,10 @@ impl WinitGlTarget {
         let template = ConfigTemplateBuilder::new().with_alpha_size(8);
 
         // glutin-winit 0.5: with_window_attributes (not with_window_builder)
-        let display_builder = DisplayBuilder::new()
-            .with_window_attributes(Some(window_attributes));
+        let display_builder = DisplayBuilder::new().with_window_attributes(Some(window_attributes));
 
         let (window, gl_config) = display_builder
-            .build(&event_loop, template, |mut configs| {
-                configs.next().unwrap()
-            })
+            .build(&event_loop, template, |mut configs| configs.next().unwrap())
             .map_err(|e| Error::Backend(format!("display build: {e}")))?;
 
         let window = window.ok_or_else(|| Error::Backend("no window from glutin".into()))?;

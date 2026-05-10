@@ -5,8 +5,8 @@
 
 pub const QUAD_POSITIONS: &[f32] = &[
     -1.0, -1.0, // bottom-left
-     3.0, -1.0, // bottom-right (extends past, big triangle)
-    -1.0,  3.0, // top-left (extends past)
+    3.0, -1.0, // bottom-right (extends past, big triangle)
+    -1.0, 3.0, // top-left (extends past)
 ];
 
 pub const VERTEX_COUNT: i32 = 3;

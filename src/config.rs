@@ -42,6 +42,10 @@ impl Config {
         })?;
         Ok(cfg)
     }
+
+    pub fn xfade_or(&self) -> f32 {
+        self.initial.xfade
+    }
 }
 
 #[cfg(test)]
@@ -80,11 +84,5 @@ mod tests {
         "#;
         let cfg: Config = toml::from_str(s).unwrap();
         assert_eq!(cfg.xfade_or(), 0.0);
-    }
-}
-
-impl Config {
-    pub fn xfade_or(&self) -> f32 {
-        self.initial.xfade
     }
 }

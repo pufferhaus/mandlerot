@@ -2,7 +2,7 @@
 //!
 //! Wraps `notify` so the rest of the program just polls a channel.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
@@ -70,7 +70,7 @@ fn emit_for_event(_dir: &Path, event: &notify::Event, tx: &Sender<ReloadEvent>) 
     }
 }
 
-fn matches_scene_extension(p: &PathBuf) -> bool {
+fn matches_scene_extension(p: &Path) -> bool {
     matches!(
         p.extension().and_then(|s| s.to_str()),
         Some("glsl") | Some("toml")

@@ -116,10 +116,13 @@ impl PiContext {
             .ok_or_else(|| Error::Backend("encoder has no CRTC".into()))?;
 
         let card_for_gbm = PiCard {
-            file: card.file.try_clone().map_err(|e| Error::Backend(format!("dup: {e}")))?,
+            file: card
+                .file
+                .try_clone()
+                .map_err(|e| Error::Backend(format!("dup: {e}")))?,
         };
-        let gbm = GbmDevice::new(card_for_gbm)
-            .map_err(|e| Error::Backend(format!("gbm device: {e}")))?;
+        let gbm =
+            GbmDevice::new(card_for_gbm).map_err(|e| Error::Backend(format!("gbm device: {e}")))?;
         let surface = gbm
             .create_surface::<()>(
                 width,
@@ -160,24 +163,15 @@ impl PiContext {
             .map_err(|e| Error::Backend(format!("choose config: {e}")))?
             .ok_or_else(|| Error::Backend("no matching EGL config".into()))?;
 
-        let ctx_attribs = [
-            khronos_egl::CONTEXT_CLIENT_VERSION,
-            2,
-            khronos_egl::NONE,
-        ];
+        let ctx_attribs = [khronos_egl::CONTEXT_CLIENT_VERSION, 2, khronos_egl::NONE];
         egl.bind_api(khronos_egl::OPENGL_ES_API)
             .map_err(|e| Error::Backend(format!("bind api: {e}")))?;
         let egl_context = egl
             .create_context(egl_display, config, None, &ctx_attribs)
             .map_err(|e| Error::Backend(format!("create ctx: {e}")))?;
         let egl_surface = unsafe {
-            egl.create_window_surface(
-                egl_display,
-                config,
-                surface.as_raw_mut() as *mut _,
-                None,
-            )
-            .map_err(|e| Error::Backend(format!("create surface: {e}")))?
+            egl.create_window_surface(egl_display, config, surface.as_raw_mut() as *mut _, None)
+                .map_err(|e| Error::Backend(format!("create surface: {e}")))?
         };
         egl.make_current(
             egl_display,
@@ -235,8 +229,20 @@ impl PiTarget {
     }
 
     fn add_fb_for_bo(&self, bo: &gbm::BufferObject<()>) -> Result<framebuffer::Handle> {
-        let handles = [bo.handle().map_err(|e| Error::Backend(format!("bo handle: {e}")))?, 0, 0, 0];
-        let pitches = [bo.stride().map_err(|e| Error::Backend(format!("stride: {e}")))?, 0, 0, 0];
+        let handles = [
+            bo.handle()
+                .map_err(|e| Error::Backend(format!("bo handle: {e}")))?,
+            0,
+            0,
+            0,
+        ];
+        let pitches = [
+            bo.stride()
+                .map_err(|e| Error::Backend(format!("stride: {e}")))?,
+            0,
+            0,
+            0,
+        ];
         let offsets = [0u32; 4];
         let fb = self
             .ctx
@@ -291,7 +297,12 @@ impl super::target::RenderTarget for PiTarget {
         } else {
             self.ctx
                 .card
-                .page_flip(self.ctx.crtc_handle, fb, drm::control::PageFlipFlags::EVENT, None)
+                .page_flip(
+                    self.ctx.crtc_handle,
+                    fb,
+                    drm::control::PageFlipFlags::EVENT,
+                    None,
+                )
                 .map_err(|e| Error::Backend(format!("page_flip: {e}")))?;
         }
         // Drop the previously-held BO; the kernel now owns the previous FB.
