@@ -82,6 +82,10 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
                 state.preset_dirty = true;
             }
         }
+        Action::RecallPreset { .. } | Action::SavePreset { .. } => {
+            // Handled by caller with PresetStore. Apply layer is purely state-mutating
+            // and doesn't own the preset file.
+        }
     }
     Ok(())
 }
@@ -91,37 +95,28 @@ pub const SAFE_SCENE_NAME: &str = "__safe__";
 fn apply_slot(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, n: u8) -> Result<()> {
     match state.active_mode {
         Mode::Scene => {
-            // Slot 1-9 → scene index 0-8 in alphabetical scene library order.
-            if n >= 1 && n <= 9 {
+            if (1..=9).contains(&n) {
                 let action = Action::SetSceneByIndex { layer, index: n - 1 };
                 return apply(&action, state, lib);
             }
         }
         Mode::Param => {
-            // Slot 1-8 = select param slot; 9 = reset selected param to default.
             if (1..=8).contains(&n) {
-                let slot_idx = n - 1;
                 match layer {
-                    Layer::A => state.selected_param_a = slot_idx,
-                    Layer::B => state.selected_param_b = slot_idx,
+                    Layer::A => state.selected_param_a = n - 1,
+                    Layer::B => state.selected_param_b = n - 1,
                 }
             } else if n == 9 {
                 reset_selected_param(state, lib, layer)?;
             }
         }
         Mode::Preset => {
-            // Recall slot 1-8; save handled separately when other_layer modifier is set.
-            // This function only sees Slot{n, other_layer}. In Preset mode, other_layer=true
-            // means "save"; recall is other_layer=false.
-            // The branch below is reached only for recall (saved is dispatched via a
-            // separate handler in main.rs when it detects other_layer=true in Preset mode).
-            // For unit-test purposes we ignore the save case here.
-            // n=9 = reset all params.
             if n == 9 {
                 let action = Action::ResetAllParams;
                 return apply(&action, state, lib);
             }
-            // Recall is handled in preset/store.rs (Task 21). For now, no-op.
+            // Preset 1-8 handled by caller (main.rs) with access to PresetStore.
+            // No-op here.
         }
     }
     Ok(())

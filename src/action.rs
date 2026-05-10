@@ -42,6 +42,10 @@ pub enum Action {
     SetXfade(f32),
     /// Set explicit scene on a layer (used by Slot in SCENE mode).
     SetSceneByIndex { layer: Layer, index: u8 },
+    /// Recall preset slot 1-8 (PRESET mode + slot key, no modifier).
+    RecallPreset { slot: u8 },
+    /// Save current state to preset slot 1-8 (PRESET mode + slot key + modifier).
+    SavePreset { slot: u8 },
 }
 
 #[cfg(test)]
