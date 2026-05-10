@@ -1,0 +1,37 @@
+name = "ascii_rain"
+display_name = "ASCII Rain"
+
+[[params]]
+slot = 0
+name = "speed"
+min = 0.5
+max = 3.0
+default = 1.5
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.5
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "density"
+min = 0.3
+max = 1.0
+default = 0.7
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "hue_phase"
+min = 0.0
+max = 1.0
+default = 0.33
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "trail_decay"
+min = 0.0
+max = 0.5
+default = 0.15
+curve = "linear"
