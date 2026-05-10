@@ -93,7 +93,7 @@ impl Pipeline {
                 state.audio_bands[3],
             );
             set_uniform_float(&self.gl, *prog, "u_trigger", state.trigger);
-            let slots = params.slot_values();
+            let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);
             for (i, v) in slots.iter().enumerate() {
                 set_uniform_float(&self.gl, *prog, &format!("u_param{i}"), *v);
             }
