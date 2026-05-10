@@ -34,6 +34,10 @@ khronos-egl = { version = "6", features = ["dynamic"], optional = true }
 gbm = { version = "0.15", default-features = false, features = ["drm-support"], optional = true }
 drm = { version = "0.12", optional = true }
 evdev = { version = "0.13", optional = true }
+rppal = { version = "0.19", optional = true }
+mipidsi = { version = "0.8", optional = true }
+display-interface-spi = { version = "0.5", optional = true }
+embedded-hal = { version = "1", optional = true }
 
 # cpal 0.15 on macOS pulls in coreaudio-sys; 0.2.17 bumped to edition2024
 # which requires Rust 1.85+. Pin to <0.2.17 to stay compatible with our
@@ -44,7 +48,7 @@ coreaudio-sys = { version = ">=0.2.0, <0.2.17", default-features = false }
 [features]
 default = ["desktop"]
 desktop = ["dep:winit", "dep:glutin", "dep:glutin-winit", "dep:raw-window-handle"]
-pi = ["dep:khronos-egl", "dep:gbm", "dep:drm", "dep:evdev"]
+pi = ["dep:khronos-egl", "dep:gbm", "dep:drm", "dep:evdev", "dep:rppal", "dep:mipidsi", "dep:display-interface-spi", "dep:embedded-hal"]
 
 [dev-dependencies]
 pretty_assertions = "1"

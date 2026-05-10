@@ -7,6 +7,9 @@ pub mod theme;
 #[cfg(feature = "desktop")]
 pub mod desktop;
 
+#[cfg(all(feature = "pi", target_os = "linux"))]
+pub mod pi;
+
 pub use grid::{Cell, TextScreen, ATTR_BRIGHT, ATTR_DIM, ATTR_INVERSE, ATTR_NORMAL, COLS, ROWS};
 
 /// Output sink for the rendered framebuffer.
