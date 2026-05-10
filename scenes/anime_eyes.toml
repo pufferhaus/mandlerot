@@ -5,8 +5,8 @@ display_name = "Anime Eyes"
 slot = 0
 name = "pupil_size"
 min = 0.05
-max = 0.18
-default = 0.085
+max = 0.20
+default = 0.10
 curve = "linear"
 audio_route = "bass"
 audio_amount = 0.15
@@ -17,7 +17,7 @@ slot = 1
 name = "look_speed"
 min = 0.0
 max = 1.5
-default = 0.45
+default = 0.4
 curve = "linear"
 
 [[params]]
@@ -42,9 +42,9 @@ curve = "linear"
 [[params]]
 slot = 4
 name = "eye_size"
-min = 0.18
-max = 0.45
-default = 0.34
+min = 0.20
+max = 0.50
+default = 0.36
 curve = "linear"
 
 [[params]]
@@ -52,7 +52,7 @@ slot = 5
 name = "jitter"
 min = 0.0
 max = 0.06
-default = 0.010
+default = 0.012
 curve = "linear"
 audio_route = "treble"
 audio_amount = 0.5
@@ -61,15 +61,15 @@ audio_polarity = 1.0
 [[params]]
 slot = 6
 name = "iris_radius"
-min = 0.45
+min = 0.55
 max = 0.85
-default = 0.70
+default = 0.72
 curve = "linear"
 
 [[params]]
 slot = 7
-name = "iris_brightness"
-min = 0.5
-max = 1.5
-default = 1.0
+name = "pixel_grid"
+min = 40.0
+max = 160.0
+default = 96.0
 curve = "linear"
