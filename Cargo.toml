@@ -29,11 +29,12 @@ raw-window-handle = { version = "0.6", optional = true }
 khronos-egl = { version = "6", features = ["dynamic"], optional = true }
 gbm = { version = "0.15", default-features = false, features = ["drm-support"], optional = true }
 drm = { version = "0.12", optional = true }
+evdev = { version = "0.13", optional = true }
 
 [features]
 default = ["desktop"]
 desktop = ["dep:winit", "dep:glutin", "dep:glutin-winit", "dep:raw-window-handle"]
-pi = ["dep:khronos-egl", "dep:gbm", "dep:drm"]
+pi = ["dep:khronos-egl", "dep:gbm", "dep:drm", "dep:evdev"]
 
 [dev-dependencies]
 pretty_assertions = "1"
