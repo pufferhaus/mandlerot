@@ -1,0 +1,54 @@
+name = "static"
+display_name = "Analog Static"
+
+[[params]]
+slot = 0
+name = "noise_density"
+min = 0.5
+max = 1.0
+default = 0.9
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "scanline"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "chroma_tint"
+min = -1.0
+max = 1.0
+default = 0.05
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.3
+
+[[params]]
+slot = 3
+name = "roll_amount"
+min = 0.0
+max = 1.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "hum_freq"
+min = 10.0
+max = 200.0
+default = 60.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "brightness"
+min = 0.0
+max = 1.0
+default = 0.7
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.3
