@@ -36,9 +36,10 @@ void main() {
     // Vinyl color (very dark, slightly blue-grey)
     vec3 vinyl = vec3(0.05, 0.05, 0.07) + record_col * vec3(0.3, 0.3, 0.35);
 
-    // Center label
+    // Center label — slow BPM-locked hue drift so it never sits frozen.
     float in_label = smoothstep(label_size + 0.005, label_size, radius);
-    vec3 label_base = 0.5 + 0.5 * cos(6.2831 * (label_hue + vec3(0.0, 0.33, 0.66)));
+    float label_drift = u_time * bpm / (60.0 * 32.0);
+    vec3 label_base = 0.5 + 0.5 * cos(6.2831 * (label_hue + label_drift + vec3(0.0, 0.33, 0.66)));
     // Label spin pattern: concentric rings
     float label_rings = 0.6 + 0.4 * sin(radius * 80.0 + angle * 2.0 + u_time);
     vec3 label_col = label_base * label_rings;

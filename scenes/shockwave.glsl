@@ -36,7 +36,8 @@ void main() {
     }
 
     glow = clamp(glow, 0.0, 1.0);
-    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + vec3(0.0, 0.33, 0.66)));
+    float hue_drift = beat_phase / 32.0;
+    vec3 col = 0.5 + 0.5 * cos(6.2831 * (hue + hue_drift + vec3(0.0, 0.33, 0.66)));
 
     gl_FragColor = vec4(col * glow, 1.0);
 }

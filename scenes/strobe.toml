@@ -14,7 +14,7 @@ slot = 1
 name = "background"
 min = 0.0
 max = 0.2
-default = 0.0
+default = 0.04
 curve = "linear"
 
 [[params]]
@@ -22,7 +22,7 @@ slot = 2
 name = "hue_speed"
 min = 0.0
 max = 2.0
-default = 0.5
+default = 0.7
 curve = "linear"
 
 [[params]]
@@ -30,8 +30,11 @@ slot = 3
 name = "hue_bass_kick"
 min = 0.0
 max = 1.0
-default = 0.4
+default = 0.5
 curve = "linear"
+audio_route = "bass"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 4

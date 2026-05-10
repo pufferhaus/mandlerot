@@ -25,8 +25,9 @@ void main() {
     vec3 color_hue = 0.5 + 0.5 * cos(6.2831 * (hue + vec3(0.0, 0.33, 0.66)));
     vec3 flash_color = mix(vec3(1.0), color_hue, chroma);
 
-    // Combine flash with background floor
-    vec3 col = mix(vec3(background), flash_color, brightness);
+    // Combine flash with background floor (tinted by current hue, not gray).
+    vec3 bg_col = vec3(background) * mix(vec3(1.0), color_hue, chroma);
+    vec3 col = mix(bg_col, flash_color, brightness);
 
     gl_FragColor = vec4(col, 1.0);
 }
