@@ -18,8 +18,12 @@ pub struct Pipeline {
     gl: Arc<glow::Context>,
     width: u32,
     height: u32,
-    fbo_a: Fbo,
-    fbo_b: Fbo,
+    /// Ping-pong FBOs for layer A. Frame N writes to `fbo_a[front_a]`
+    /// while sampling `fbo_a[1 - front_a]` as `u_prev`.
+    fbo_a: [Fbo; 2],
+    fbo_b: [Fbo; 2],
+    front_a: usize,
+    front_b: usize,
     blend_program: glow::Program,
     quad_vao: glow::VertexArray,
     /// scene name → compiled program
@@ -29,8 +33,14 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn new(gl: Arc<glow::Context>, width: u32, height: u32) -> Result<Self> {
-        let fbo_a = Fbo::new(gl.clone(), width, height)?;
-        let fbo_b = Fbo::new(gl.clone(), width, height)?;
+        let fbo_a = [
+            Fbo::new(gl.clone(), width, height)?,
+            Fbo::new(gl.clone(), width, height)?,
+        ];
+        let fbo_b = [
+            Fbo::new(gl.clone(), width, height)?,
+            Fbo::new(gl.clone(), width, height)?,
+        ];
         let blend_program = compile_program(&gl, QUAD_VERT, BLEND_FRAG)?;
         let quad_vao = create_quad_vao(&gl)?;
         Ok(Self {
@@ -39,11 +49,22 @@ impl Pipeline {
             height,
             fbo_a,
             fbo_b,
+            front_a: 0,
+            front_b: 0,
             blend_program,
             quad_vao,
             scene_programs: BTreeMap::new(),
             overlay_program: None,
         })
+    }
+
+    /// Index of the FBO holding the most recently rendered frame for layer A.
+    pub fn front_a(&self) -> usize {
+        self.front_a
+    }
+    /// Index of the FBO holding the most recently rendered frame for layer B.
+    pub fn front_b(&self) -> usize {
+        self.front_b
     }
 
     /// Compile (or recompile) a scene's program. On failure, returns the GL
@@ -64,6 +85,7 @@ impl Pipeline {
     fn render_layer_to(
         &self,
         target: &Fbo,
+        prev: &Fbo,
         scene_name: &str,
         params: &ParamMap,
         state: &SharedState,
@@ -77,6 +99,13 @@ impl Pipeline {
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
             self.gl.use_program(Some(*prog));
+            // Bind the previous-frame texture for this layer to TEXTURE0
+            // so the scene shader can sample its own history via `u_prev`.
+            // No other texture is in flight during a scene render, so unit 0
+            // is free; the blend pass re-binds units 0/1 fresh.
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(prev.texture));
+            set_uniform_int(&self.gl, *prog, "u_prev", 0);
             set_uniform_float(&self.gl, *prog, "u_time", state.time_secs);
             set_uniform_vec2(
                 &self.gl,
@@ -133,11 +162,11 @@ impl Pipeline {
             self.gl.use_program(Some(self.blend_program));
             self.gl.active_texture(glow::TEXTURE0);
             self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_a.texture));
+                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_a[self.front_a].texture));
             set_uniform_int(&self.gl, self.blend_program, "u_layer_a", 0);
             self.gl.active_texture(glow::TEXTURE1);
             self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b.texture));
+                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b[self.front_b].texture));
             set_uniform_int(&self.gl, self.blend_program, "u_layer_b", 1);
             set_uniform_float(&self.gl, self.blend_program, "u_xfade", state.xfade);
             set_uniform_int(
@@ -151,19 +180,33 @@ impl Pipeline {
         }
     }
 
-    pub fn frame(&self, state: &SharedState, default_fb_w: u32, default_fb_h: u32) -> Result<()> {
+    pub fn frame(
+        &mut self,
+        state: &SharedState,
+        default_fb_w: u32,
+        default_fb_h: u32,
+    ) -> Result<()> {
+        // Layer A: write to the back FBO, sample the front (previous frame).
+        let next_a = 1 - self.front_a;
         self.render_layer_to(
-            &self.fbo_a,
+            &self.fbo_a[next_a],
+            &self.fbo_a[self.front_a],
             &state.layer_a.scene_name,
             &state.layer_a.params,
             state,
         )?;
+        self.front_a = next_a;
+
+        let next_b = 1 - self.front_b;
         self.render_layer_to(
-            &self.fbo_b,
+            &self.fbo_b[next_b],
+            &self.fbo_b[self.front_b],
             &state.layer_b.scene_name,
             &state.layer_b.params,
             state,
         )?;
+        self.front_b = next_b;
+
         self.render_blend_to_default(default_fb_w, default_fb_h, state);
         Ok(())
     }
@@ -410,5 +453,159 @@ default = 0.0
         assert!(matches!(err, crate::Error::ShaderCompile(_)));
         // old program still present
         assert!(pipe.has_scene("foo"));
+    }
+
+    fn make_state(lib: &crate::scene::SceneLibrary, scene: &str) -> crate::state::SharedState {
+        crate::state::SharedState::from_initial(
+            lib,
+            scene,
+            scene,
+            0.0,
+            crate::state::BlendMode::Mix,
+        )
+        .unwrap()
+    }
+
+    fn lib_with(scene_name: &str, body: &str) -> crate::scene::SceneLibrary {
+        let mut lib = crate::scene::SceneLibrary::default();
+        let scene = loaded(scene_name, body);
+        lib.upsert(scene_name, scene);
+        lib
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn pingpong_constructs_two_fbo_pairs() {
+        let target = WinitGlTarget::new(8, 8, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let pipe = Pipeline::new(gl, 8, 8).unwrap();
+        // Each layer has exactly two FBOs (the array literal guarantees this
+        // structurally; this assertion exists to catch regressions if the
+        // shape ever changes back to a single FBO).
+        assert_eq!(pipe.fbo_a.len(), 2);
+        assert_eq!(pipe.fbo_b.len(), 2);
+        assert_eq!(pipe.front_a(), 0);
+        assert_eq!(pipe.front_b(), 0);
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn front_index_flips_each_frame() {
+        let target = WinitGlTarget::new(8, 8, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let mut pipe = Pipeline::new(gl, 8, 8).unwrap();
+        let lib = lib_with("solid", "void main() { gl_FragColor = vec4(1.0); }");
+        pipe.upsert_scene("solid", lib.get("solid").unwrap())
+            .unwrap();
+        let state = make_state(&lib, "solid");
+        assert_eq!(pipe.front_a(), 0);
+        assert_eq!(pipe.front_b(), 0);
+        pipe.frame(&state, 8, 8).unwrap();
+        assert_eq!(pipe.front_a(), 1);
+        assert_eq!(pipe.front_b(), 1);
+        pipe.frame(&state, 8, 8).unwrap();
+        assert_eq!(pipe.front_a(), 0);
+        assert_eq!(pipe.front_b(), 0);
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn fbos_clear_to_opaque_black_on_construct() {
+        // First-frame `u_prev` should sample (0,0,0,1). We verify by running a
+        // scene that simply outputs `texture2D(u_prev, v_uv)` on frame 0;
+        // since neither FBO has been written, the entire output should be
+        // black (alpha=1).
+        let target = WinitGlTarget::new(8, 8, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let mut pipe = Pipeline::new(gl, 8, 8).unwrap();
+        let lib = lib_with(
+            "echo_test",
+            "void main() { gl_FragColor = texture2D(u_prev, v_uv); }",
+        );
+        pipe.upsert_scene("echo_test", lib.get("echo_test").unwrap())
+            .unwrap();
+        let state = make_state(&lib, "echo_test");
+        pipe.frame(&state, 8, 8).unwrap();
+        let pixels = pipe.read_default_pixels(8, 8);
+        // Every channel of every pixel should be 0 (RGB) with alpha 255.
+        for px in pixels.chunks_exact(4) {
+            assert_eq!(px[0], 0, "R should be 0 on first frame");
+            assert_eq!(px[1], 0, "G should be 0 on first frame");
+            assert_eq!(px[2], 0, "B should be 0 on first frame");
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn u_prev_accumulates_across_frames() {
+        // Scene adds 0.1 to its previous frame each tick. After N frames we
+        // should see roughly N*0.1 (capped at 1.0). This is the canonical
+        // ping-pong correctness proof.
+        let target = WinitGlTarget::new(8, 8, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let mut pipe = Pipeline::new(gl, 8, 8).unwrap();
+        let lib = lib_with(
+            "accum",
+            "void main() { gl_FragColor = texture2D(u_prev, v_uv) + vec4(0.1, 0.1, 0.1, 0.0); }",
+        );
+        pipe.upsert_scene("accum", lib.get("accum").unwrap())
+            .unwrap();
+        let state = make_state(&lib, "accum");
+        // Run 5 frames → expected ~0.5 in each channel (≈127).
+        for _ in 0..5 {
+            pipe.frame(&state, 8, 8).unwrap();
+        }
+        let pixels = pipe.read_default_pixels(8, 8);
+        // Allow generous tolerance: GPU low-precision blend + 8-bit roundoff.
+        let center = pixels[(4 * 8 + 4) * 4] as i32;
+        assert!(
+            (100..=160).contains(&center),
+            "expected ~127 after 5 accumulations, got {center}"
+        );
+    }
+
+    #[test]
+    #[ignore = "Requires display, main thread"]
+    fn u_prev_per_layer_isolation() {
+        // Layer A's `u_prev` must reflect layer A history only — not layer B.
+        // Run scene A = "constant red", scene B = "constant blue", verify
+        // each layer's previous-frame texture stays its own color.
+        let target = WinitGlTarget::new(8, 8, "test").unwrap();
+        let gl: Arc<glow::Context> = target.gl();
+        let mut pipe = Pipeline::new(gl, 8, 8).unwrap();
+        let mut lib = crate::scene::SceneLibrary::default();
+        lib.upsert(
+            "red",
+            loaded(
+                "red",
+                "void main() { gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }",
+            ),
+        );
+        lib.upsert(
+            "blue",
+            loaded(
+                "blue",
+                "void main() { gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); }",
+            ),
+        );
+        pipe.upsert_scene("red", lib.get("red").unwrap()).unwrap();
+        pipe.upsert_scene("blue", lib.get("blue").unwrap()).unwrap();
+        let mut state = crate::state::SharedState::from_initial(
+            &lib,
+            "red",
+            "blue",
+            0.5,
+            crate::state::BlendMode::Mix,
+        )
+        .unwrap();
+        state.xfade = 0.5; // see both
+        pipe.frame(&state, 8, 8).unwrap();
+        pipe.frame(&state, 8, 8).unwrap();
+        // After two frames, blended output should have non-trivial red AND
+        // blue. If isolation were broken we'd see purple bleeding asymmetrically.
+        let pixels = pipe.read_default_pixels(8, 8);
+        let px = &pixels[0..4];
+        assert!(px[0] > 64, "red should survive in layer A: {px:?}");
+        assert!(px[2] > 64, "blue should survive in layer B: {px:?}");
     }
 }

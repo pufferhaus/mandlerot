@@ -68,6 +68,11 @@ impl Fbo {
             if status != glow::FRAMEBUFFER_COMPLETE {
                 return Err(Error::Backend(format!("FBO incomplete: {status:#x}")));
             }
+            // Clear to opaque black so the very first `u_prev` sample on a
+            // ping-pong setup reads (0,0,0,1) rather than uninitialized data.
+            gl.viewport(0, 0, width as i32, height as i32);
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
             Ok(Self {
