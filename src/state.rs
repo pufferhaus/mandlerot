@@ -71,7 +71,6 @@ pub struct SharedState {
     pub tap_tempo_bpm: f32,
     pub active_preset_slot: Option<u8>,
     pub preset_dirty: bool,
-    pub last_action_label: String,
 }
 
 impl SharedState {
@@ -107,7 +106,6 @@ impl SharedState {
             tap_tempo_bpm: 0.0,
             active_preset_slot: None,
             preset_dirty: false,
-            last_action_label: String::new(),
         })
     }
 

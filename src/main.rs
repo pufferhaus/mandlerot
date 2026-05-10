@@ -127,11 +127,18 @@ fn main() -> anyhow::Result<()> {
         let bands = audio_atomic.load_bands();
         let beat_value = audio_atomic.load_beat();
         state.audio_bands = bands;
-        // u_trigger = max(beat decay, manual trigger pulse).
-        // When audio is bypassed only manual `Action::Trigger` should fire,
-        // so do NOT OR in the beat detector's value.
-        if !state.audio_bypass {
-            state.trigger = state.trigger.max(beat_value);
+        // Trigger sourcing:
+        //   - bypassed: audio is silent; decay the manual Action::Trigger pulse
+        //     here so visual reactivity to a tap fades naturally.
+        //   - live:     the BeatDetector already owns its own decay; sample it
+        //     directly. A manual Action::Trigger fired this same frame still
+        //     reads as 1.0 in the shader (apply runs before render); next
+        //     frame it's overwritten by the audio value, matching the
+        //     "one-frame pulse" semantic documented on Action::Trigger.
+        if state.audio_bypass {
+            state.trigger *= 0.85;
+        } else {
+            state.trigger = beat_value;
         }
 
         // Input
@@ -165,8 +172,10 @@ fn main() -> anyhow::Result<()> {
         if !state.freeze_active {
             state.time_secs = start.elapsed().as_secs_f32();
         }
-        // Trigger decay (~150 ms half-life)
-        state.trigger *= 0.85;
+        // Trigger decay is owned by the audio thread (BeatDetector); we just
+        // sample its current value above. We do NOT decay state.trigger here:
+        // doing so on top of the audio-thread decay would compound rates and
+        // shorten manual `Action::Trigger` pulses unpredictably.
 
         if let Err(e) = pipeline.frame(&state, target.dimensions().0, target.dimensions().1) {
             tracing::error!("frame error: {e}");

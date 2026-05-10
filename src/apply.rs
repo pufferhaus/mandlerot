@@ -33,8 +33,14 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
             };
             apply_slot(state, lib, layer, *n)?;
         }
-        Action::XfadeMinus => state.xfade = (state.xfade - XFADE_STEP).max(0.0),
-        Action::XfadePlus => state.xfade = (state.xfade + XFADE_STEP).min(1.0),
+        Action::XfadeMinus => {
+            state.xfade = (state.xfade - XFADE_STEP).max(0.0);
+            state.preset_dirty = true;
+        }
+        Action::XfadePlus => {
+            state.xfade = (state.xfade + XFADE_STEP).min(1.0);
+            state.preset_dirty = true;
+        }
         Action::ParamMinus => apply_param_step(state, -1)?,
         Action::ParamPlus => apply_param_step(state, 1)?,
         Action::ResetAllParams => {
@@ -62,7 +68,10 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         Action::Trigger => state.trigger = 1.0,
         Action::FreezeToggle => state.freeze_active = !state.freeze_active,
         Action::TapTempo => { /* handled by tap-tempo subsystem in Task 24 */ }
-        Action::AudioBypass => state.audio_bypass = !state.audio_bypass,
+        Action::AudioBypass => {
+            state.audio_bypass = !state.audio_bypass;
+            state.preset_dirty = true;
+        }
         Action::Panic => {
             state.layer_a.scene_name = SAFE_SCENE_NAME.to_string();
             state.layer_b.scene_name = SAFE_SCENE_NAME.to_string();
@@ -159,6 +168,7 @@ fn apply_param_step(state: &mut SharedState, dir: i8) -> Result<()> {
         } else {
             state.xfade = (state.xfade + XFADE_STEP).min(1.0);
         }
+        state.preset_dirty = true;
     }
     Ok(())
 }

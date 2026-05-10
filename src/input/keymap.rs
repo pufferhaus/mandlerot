@@ -189,7 +189,6 @@ mod tests {
             tap_tempo_bpm: 0.0,
             active_preset_slot: None,
             preset_dirty: false,
-            last_action_label: String::new(),
         }
     }
 
