@@ -1,0 +1,45 @@
+name = "vinyl"
+display_name = "Vinyl"
+
+[[params]]
+slot = 0
+name = "groove_density"
+min = 50.0
+max = 400.0
+default = 200.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "rot_speed"
+min = -2.0
+max = 2.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "wobble_amount"
+min = 0.0
+max = 0.05
+default = 0.005
+curve = "linear"
+audio_route = "bass"
+audio_amount = 1.0
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.05
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "label_size"
+min = 0.05
+max = 0.3
+default = 0.12
+curve = "linear"
