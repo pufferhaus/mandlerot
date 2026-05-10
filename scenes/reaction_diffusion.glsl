@@ -1,25 +1,40 @@
-// Gray-Scott reaction-diffusion. U+V stored in red/green channels.
-// du/dt = Du*lap(u) - u*v^2 + f*(1-u)
-// dv/dt = Dv*lap(v) + u*v^2 - (f+k)*v
-// Two substeps per frame for stability.
+// Gray-Scott reaction-diffusion. State stored in alpha (V concentration);
+// U is approximated as 1 - V so the RGB channels are free for palette display.
+// This prevents the "always orange" failure mode where U=0.5, V=0.3 in R/G
+// would dominate the visible color regardless of hue.
 //
-// u_param0  feed_rate    (0.01..0.10,  0.055)
-// u_param1  kill_rate    (0.04..0.07,  0.062) audio_route=bass
-// u_param2  hue          (0..1,        0.45)
-// u_param3  reseed_beats (4..64,       32)    full reset cadence
-// u_param4  perturbation (0..1,        0.3)   noise injected on beats
+// du/dt = Du*lap(u) - u*v² + f*(1-u)
+// dv/dt = Dv*lap(v) + u*v² - (f+k)*v
+//
+// Default (f, k) = (0.037, 0.06) is the "stripes / labyrinth" regime —
+// patterns never settle to static spots; they flow and reorganize forever.
+//
+// u_param0  feed_rate    (0.01..0.10,  0.037)
+// u_param1  kill_rate    (0.04..0.07,  0.060) audio_route=bass
+// u_param2  hue          (0..1,        0.55)  audio_route=himid
+// u_param3  reseed_beats (4..64,       12.0)  full reset cadence
+// u_param4  perturbation (0..1,        0.4)   noise injection on beats / treble
 
 float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-vec2 laplacian(vec2 uv, vec2 px) {
-    vec2 c = texture2D(u_prev, uv).rg;
-    vec2 n = texture2D(u_prev, uv + vec2(0.0,  px.y)).rg;
-    vec2 s = texture2D(u_prev, uv + vec2(0.0, -px.y)).rg;
-    vec2 e = texture2D(u_prev, uv + vec2( px.x, 0.0)).rg;
-    vec2 w = texture2D(u_prev, uv + vec2(-px.x, 0.0)).rg;
-    return (n + s + e + w) - 4.0 * c;
+float v_at(vec2 uv) {
+    return texture2D(u_prev, uv).a;
+}
+
+float lap_v(vec2 uv, vec2 px) {
+    float c = v_at(uv);
+    float n = v_at(uv + vec2(0.0,  px.y));
+    float s = v_at(uv + vec2(0.0, -px.y));
+    float e = v_at(uv + vec2( px.x, 0.0));
+    float w = v_at(uv + vec2(-px.x, 0.0));
+    // Diagonals at lower weight for a 9-tap Laplacian — sharper edges than 5-tap.
+    float ne = v_at(uv + vec2( px.x,  px.y));
+    float nw = v_at(uv + vec2(-px.x,  px.y));
+    float se = v_at(uv + vec2( px.x, -px.y));
+    float sw = v_at(uv + vec2(-px.x, -px.y));
+    return 0.2 * (n + s + e + w) + 0.05 * (ne + nw + se + sw) - 1.0 * c;
 }
 
 void main() {
@@ -27,52 +42,51 @@ void main() {
 
     float f = u_param0;
     float k = u_param1;
-    float Du = 1.0;
-    float Dv = 0.5;
 
-    float bpm  = u_bpm > 1.0 ? u_bpm : 120.0;
+    float bpm   = u_bpm > 1.0 ? u_bpm : 120.0;
     float beats = u_time * bpm / 60.0;
 
-    // Wipe gate: true for ~50 ms each cycle
-    float in_wipe = step(mod(beats, u_param3), 0.1);
+    float in_wipe   = step(mod(beats, u_param3), 0.15);
     float seed_gate = max(step(u_time, 0.5), in_wipe);
 
-    // Blob mask for seeding: small circle at center
-    vec2 c = v_uv - 0.5;
-    float blob = step(length(c), 0.05);
+    // Multi-blob seed: 7 blobs at hashed positions across the screen so the
+    // reaction has multiple foci and the pattern emerges with spatial variety.
+    float seed = 0.0;
+    for (int i = 0; i < 7; i++) {
+        float fi = float(i);
+        vec2 center = vec2(hash21(vec2(fi, 1.0)), hash21(vec2(fi, 2.0)));
+        seed = max(seed, step(length(v_uv - center), 0.04));
+    }
 
-    // Current state
-    vec2 uv0 = texture2D(u_prev, v_uv).rg;
-    float u0 = uv0.r;
-    float v0 = uv0.g;
+    float v0 = v_at(v_uv);
+    float u0 = 1.0 - v0; // U≈1-V approximation; lets RGB carry palette display
 
-    // Seed: U=1 in bulk, V=1 in blob
-    u0 = mix(u0, 1.0 - blob, seed_gate);
-    v0 = mix(v0, blob,        seed_gate);
+    // Apply seed during seed_gate
+    v0 = mix(v0, seed,        seed_gate);
+    u0 = mix(u0, 1.0 - seed,  seed_gate);
 
-    // Beat perturbation: inject small V noise on beats
-    float beat_noise = hash21(v_uv * u_resolution + floor(beats)) * u_param4;
-    v0 = min(1.0, v0 + beat_noise * u_beat * (1.0 - seed_gate));
+    // Beat perturbation: inject sparse V noise so patterns keep reorganizing.
+    float beat_noise = hash21(v_uv * u_resolution + floor(beats * 4.0));
+    float beat_inject = step(0.97, beat_noise) * u_beat * u_param4 * 0.3;
+    v0 = min(1.0, v0 + beat_inject * (1.0 - seed_gate));
 
-    // Substep 1
-    vec2 lap = laplacian(v_uv, px);
+    // Reaction-diffusion step (single full step; Du=1.0, Dv=0.5, dt=1.0)
+    float lap = lap_v(v_uv, px);
+    // For U we use the inverse approximation, but its laplacian is just -lap_v.
+    float lap_u = -lap;
     float uvv = u0 * v0 * v0;
-    float du = Du * lap.r - uvv + f * (1.0 - u0);
-    float dv = Dv * lap.g + uvv - (f + k) * v0;
-    float u1 = clamp(u0 + du * 0.5, 0.0, 1.0);
-    float v1 = clamp(v0 + dv * 0.5, 0.0, 1.0);
+    float du = 1.0 * lap_u - uvv + f * (1.0 - u0);
+    float dv = 0.5 * lap   + uvv - (f + k) * v0;
+    float vn = clamp(v0 + dv, 0.0, 1.0);
+    // un is implied by 1 - vn for display purposes; we don't need to store it.
 
-    // Substep 2
-    uvv = u1 * v1 * v1;
-    du = Du * lap.r - uvv + f * (1.0 - u1);
-    dv = Dv * lap.g + uvv - (f + k) * v1;
-    float un = clamp(u1 + du * 0.5, 0.0, 1.0);
-    float vn = clamp(v1 + dv * 0.5, 0.0, 1.0);
-
-    // Display: map V concentration to palette; slow BPM-locked hue drift.
-    float t = vn;
+    // Display: palette of V with BPM-locked hue drift, audio-modulated.
     float hue_drift = beats / 48.0;
-    vec3 tint = 0.5 + 0.5 * cos(6.2831 * (u_param2 + hue_drift + t * 0.5 + vec3(0.0, 0.33, 0.66)));
+    float palette_t = u_param2 + hue_drift + vn * 0.6;
+    vec3 color = 0.5 + 0.5 * cos(6.2831 * (palette_t + vec3(0.0, 0.33, 0.66)));
+    // Modulate brightness by V so empty regions are dark, populated regions glow.
+    color *= 0.15 + 0.85 * smoothstep(0.05, 0.55, vn);
 
-    gl_FragColor = vec4(un, vn, dot(tint, vec3(0.333)), 1.0);
+    // RGB = display color; alpha = state for next frame
+    gl_FragColor = vec4(color, vn);
 }
