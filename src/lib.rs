@@ -22,5 +22,7 @@ pub mod input;
 
 pub mod audio;
 
+pub mod preset;
+
 #[cfg(feature = "desktop")]
 pub mod headless;

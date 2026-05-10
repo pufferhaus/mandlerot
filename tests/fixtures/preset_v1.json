@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "slots": {
+    "1": {
+      "name": "warmup",
+      "saved_at": "2026-05-09T21:14:03Z",
+      "scene_a": "plasma",
+      "scene_b": "solid",
+      "xfade": 0.15,
+      "blend_mode": "mix",
+      "audio_bypass": false,
+      "params_a": { "scale": 1.2, "hue": 0.7 },
+      "params_b": { "red": 0.3 }
+    }
+  }
+}
