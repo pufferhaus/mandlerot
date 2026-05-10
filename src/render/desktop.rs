@@ -46,15 +46,25 @@ struct StatusWindow {
 
 impl StatusWindow {
     /// Create the window + softbuffer surface, called from inside the winit
-    /// event-loop closure where `ActiveEventLoop` is available.
+    /// event-loop closure where `ActiveEventLoop` is available. Positions the
+    /// new window immediately to the right of `main_window` if the platform
+    /// reports a position for it.
     fn create(
         event_loop: &winit::event_loop::ActiveEventLoop,
         buf: Arc<Mutex<Vec<u16>>>,
+        main_window: &Window,
     ) -> std::result::Result<Self, String> {
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_inner_size(PhysicalSize::new(STATUS_WIN_W, STATUS_WIN_H))
             .with_resizable(false)
             .with_title("mandleROT — Status");
+        if let Ok(pos) = main_window.outer_position() {
+            let size = main_window.outer_size();
+            // Place to the right of the main window with an 8px gap.
+            let x = pos.x + size.width as i32 + 8;
+            let y = pos.y;
+            attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
         let window = Rc::new(
             event_loop
                 .create_window(attrs)
@@ -284,7 +294,7 @@ impl RenderTarget for WinitGlTarget {
                 Event::Resumed => {
                     if let Some(buf) = pending_status_buf.clone() {
                         if new_status_window.is_none() {
-                            match StatusWindow::create(target, buf) {
+                            match StatusWindow::create(target, buf, &self._window) {
                                 Ok(sw) => {
                                     tracing::info!("status preview window opened");
                                     new_status_window = Some(sw);
