@@ -136,11 +136,7 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
         "Panic" => Action::Panic,
         "ReloadAllScenes" => Action::ReloadAllScenes,
         "ResetAllParams" => Action::ResetAllParams,
-        "DebugOverlayToggle" => {
-            // Not a state-mutating action; the desktop adapter handles this
-            // synchronously. Map to a trigger that the apply layer ignores.
-            return Ok(ActionTemplate::Static(Action::Trigger));
-        }
+        "DebugOverlayToggle" => Action::DebugOverlayToggle,
         other => return Err(Error::Backend(format!("unknown Action label: {other}"))),
     };
     Ok(ActionTemplate::Static(action))

@@ -86,6 +86,10 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
             // Handled by caller with PresetStore. Apply layer is purely state-mutating
             // and doesn't own the preset file.
         }
+        Action::DebugOverlayToggle => {
+            // No overlay state yet — Plan 3 will introduce it. Silently ignore
+            // so F1 doesn't accidentally fire other actions.
+        }
     }
     Ok(())
 }

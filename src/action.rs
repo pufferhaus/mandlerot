@@ -46,6 +46,9 @@ pub enum Action {
     RecallPreset { slot: u8 },
     /// Save current state to preset slot 1-8 (PRESET mode + slot key + modifier).
     SavePreset { slot: u8 },
+    /// Toggle the debug overlay. Currently a no-op until Plan 3 lands the
+    /// overlay state; included now so F1 doesn't silently fire `Trigger`.
+    DebugOverlayToggle,
 }
 
 #[cfg(test)]
