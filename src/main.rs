@@ -90,6 +90,14 @@ fn main() -> anyhow::Result<()> {
     let mut tap_tempo = TapTempo::new();
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
     let mut input_winit = mandlerot::input::winit_src::WinitInputState::default();
+    #[cfg(all(feature = "pi", target_os = "linux"))]
+    let mut input_evdev = match mandlerot::input::evdev_src::EvdevInput::open_all() {
+        Ok(e) => Some(e),
+        Err(e) => {
+            tracing::warn!("evdev: {e}; running without HID input");
+            None
+        }
+    };
     let mut mock_input = if let Some(path) = &cli.replay {
         let s = std::fs::read_to_string(path).context("read replay file")?;
         Some(MockInput::from_script(&s)?)
@@ -127,6 +135,12 @@ fn main() -> anyhow::Result<()> {
             #[cfg(all(feature = "desktop", not(feature = "pi")))]
             for ev in target.drain_key_events() {
                 if let Some(pair) = input_winit.handle(&ev) {
+                    events.push(pair);
+                }
+            }
+            #[cfg(all(feature = "pi", target_os = "linux"))]
+            if let Some(evdev) = input_evdev.as_mut() {
+                for pair in evdev.poll() {
                     events.push(pair);
                 }
             }
