@@ -109,6 +109,7 @@ fn main() -> anyhow::Result<()> {
 
     let audio_atomic = Arc::new(AtomicAudio::new());
     let audio_stop = Arc::new(AtomicBool::new(false));
+    let audio_history = mandlerot::audio::history::AudioHistory::new();
     let _audio_thread = if cli.replay.is_none() {
         Some(spawn_audio(audio_atomic.clone(), audio_stop.clone()))
     } else {
@@ -187,6 +188,14 @@ fn main() -> anyhow::Result<()> {
         let bands = audio_atomic.load_bands();
         let beat_value = audio_atomic.load_beat();
         state.audio_bands = bands;
+        // Record this frame's bands into the rolling history ring and push
+        // the resulting RGBA snapshot to the GPU. Sampling at the render
+        // rate (not the audio rate) preserves the pre-existing semantics of
+        // "1 row per frame" that the spectrogram_waterfall scene relied on
+        // when it was scrolling u_prev. ~1.3 KB/frame upload is trivial.
+        audio_history.push(bands);
+        let history_bytes = audio_history.snapshot_rgba();
+        pipeline.upload_audio_history(&history_bytes);
         // Trigger sourcing:
         //   - bypassed: audio is silent; decay the manual Action::Trigger pulse
         //     here so visual reactivity to a tap fades naturally.
