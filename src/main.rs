@@ -95,13 +95,13 @@ fn main() -> anyhow::Result<()> {
             tracing::info!("exit requested");
             break;
         }
+        frame += 1;
         if let Some(n) = cli.smoke_frames {
-            if frame as u32 >= n {
+            if frame >= n as u64 {
                 tracing::info!("smoke frames complete");
                 break;
             }
         }
-        frame += 1;
 
         // Coarse frame pacing
         let elapsed = frame_start.elapsed();
@@ -161,12 +161,17 @@ fn handle_reload(
         source_path: glsl_path.clone(),
     };
     library.upsert(&stem, scene.clone());
-    if pipeline.has_scene(&stem) || pipeline.upsert_scene(&stem, &scene).is_ok() {
-        // Already-known scene → recompile in place
-        if let Err(e) = pipeline.upsert_scene(&stem, &scene) {
+    let was_known = pipeline.has_scene(&stem);
+    match pipeline.upsert_scene(&stem, &scene) {
+        Ok(()) => {
+            if was_known {
+                tracing::info!("hot-reloaded {stem}");
+            } else {
+                tracing::info!("loaded new scene {stem}");
+            }
+        }
+        Err(e) => {
             tracing::warn!("recompile {stem}: {e}");
-        } else {
-            tracing::info!("hot-reloaded {stem}");
         }
     }
 }
