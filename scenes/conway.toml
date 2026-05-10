@@ -3,22 +3,19 @@ display_name = "Conway"
 
 [[params]]
 slot = 0
-name = "density"
-min = 0.0
-max = 1.0
-default = 0.3
+name = "seed_density"
+min = 0.05
+max = 0.6
+default = 0.25
 curve = "linear"
 
 [[params]]
 slot = 1
-name = "regen"
+name = "drip_rate"
 min = 0.0
-max = 0.05
-default = 0.01
+max = 0.001
+default = 0.0001
 curve = "linear"
-audio_route = "beat"
-audio_amount = 1.0
-audio_polarity = 1.0
 
 [[params]]
 slot = 2
@@ -30,19 +27,16 @@ curve = "linear"
 
 [[params]]
 slot = 3
-name = "trail"
+name = "trail_alpha"
 min = 0.0
 max = 0.95
-default = 0.3
+default = 0.6
 curve = "linear"
-audio_route = "bass"
-audio_amount = 0.1
-audio_polarity = 1.0
 
 [[params]]
 slot = 4
 name = "wipe_beats"
 min = 4.0
 max = 64.0
-default = 16.0
+default = 8.0
 curve = "linear"
