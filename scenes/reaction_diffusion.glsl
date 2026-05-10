@@ -69,9 +69,10 @@ void main() {
     float un = clamp(u1 + du * 0.5, 0.0, 1.0);
     float vn = clamp(v1 + dv * 0.5, 0.0, 1.0);
 
-    // Display: map V concentration to palette
+    // Display: map V concentration to palette; slow BPM-locked hue drift.
     float t = vn;
-    vec3 tint = 0.5 + 0.5 * cos(6.2831 * (u_param2 + t * 0.5 + vec3(0.0, 0.33, 0.66)));
+    float hue_drift = beats / 48.0;
+    vec3 tint = 0.5 + 0.5 * cos(6.2831 * (u_param2 + hue_drift + t * 0.5 + vec3(0.0, 0.33, 0.66)));
 
     gl_FragColor = vec4(un, vn, dot(tint, vec3(0.333)), 1.0);
 }

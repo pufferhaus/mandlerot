@@ -6,7 +6,7 @@ slot = 0
 name = "mirror_decay"
 min = 0.5
 max = 0.99
-default = 0.92
+default = 0.9
 curve = "linear"
 
 [[params]]
@@ -14,16 +14,22 @@ slot = 1
 name = "shape_size"
 min = 0.05
 max = 0.4
-default = 0.15
+default = 0.16
 curve = "linear"
+audio_route = "bass"
+audio_amount = 0.35
+audio_polarity = 1.0
 
 [[params]]
 slot = 2
 name = "shape_speed"
 min = -2.0
 max = 2.0
-default = 0.3
+default = 0.6
 curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.3
+audio_polarity = 1.0
 
 [[params]]
 slot = 3
@@ -32,8 +38,9 @@ min = 0.0
 max = 1.0
 default = 0.55
 curve = "linear"
-audio_route = "lomid"
+audio_route = "himid"
 audio_amount = 0.4
+audio_polarity = 1.0
 
 [[params]]
 slot = 4

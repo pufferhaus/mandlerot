@@ -47,7 +47,8 @@ void main() {
 
     // Fresh injection: audio-modulated colored dots from potential
     float bright_spot = smoothstep(0.6, 1.0, abs(p0) * 0.3 + u_audio.y * 0.5);
-    vec3 fresh_col = 0.5 + 0.5 * cos(6.2831 * (hue + bright_spot * 0.3 + vec3(0.0, 0.33, 0.66)));
+    float hue_drift = u_time * bpm / (60.0 * 24.0);
+    vec3 fresh_col = 0.5 + 0.5 * cos(6.2831 * (hue + hue_drift + bright_spot * 0.3 + vec3(0.0, 0.33, 0.66)));
     float fresh = bright_spot * inject * (0.5 + u_beat * 0.5);
 
     vec3 col = mix(prev, fresh_col, fresh);
