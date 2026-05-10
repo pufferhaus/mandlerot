@@ -96,6 +96,11 @@ impl Pipeline {
                 &self.gl, *prog, "u_audio", bands[0], bands[1], bands[2], bands[3],
             );
             set_uniform_float(&self.gl, *prog, "u_trigger", state.trigger);
+            // Beat trigger is the same value as `u_trigger` for now; scenes
+            // can prefer one or the other. Zero when bypassed.
+            let beat_uniform = if state.audio_bypass { 0.0 } else { state.trigger };
+            set_uniform_float(&self.gl, *prog, "u_beat", beat_uniform);
+            set_uniform_float(&self.gl, *prog, "u_bpm", state.tap_tempo_bpm);
             let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);
             for (i, v) in slots.iter().enumerate() {
                 set_uniform_float(&self.gl, *prog, &format!("u_param{i}"), *v);
