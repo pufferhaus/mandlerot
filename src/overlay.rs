@@ -18,7 +18,7 @@ pub fn build_strip_text(state: &SharedState) -> String {
     let mode = match state.active_mode {
         Mode::Scene => "SCN",
         Mode::Param => "PRM",
-        Mode::Preset => "PST",
+        Mode::Look => "LK",
     };
     let layer = match state.active_layer {
         Layer::A => 'A',

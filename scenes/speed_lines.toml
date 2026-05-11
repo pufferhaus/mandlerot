@@ -1,0 +1,72 @@
+name = "speed_lines"
+display_name = "Speed Lines"
+
+[[params]]
+slot = 0
+name = "line_count"
+min = 32.0
+max = 256.0
+default = 160.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "length"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.25
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "width"
+min = 0.0
+max = 1.0
+default = 0.35
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "center_clear"
+min = 0.0
+max = 0.5
+default = 0.15
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "invert"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "rotation_rate"
+min = 0.0
+max = 2.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "noise_jitter"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "beat_punch"
+min = 0.0
+max = 1.0
+default = 0.6
+curve = "linear"
+audio_route = "beat"
+audio_amount = 0.4
+audio_polarity = 1.0

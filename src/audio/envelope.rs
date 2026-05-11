@@ -35,19 +35,34 @@ impl EnvelopeFollower {
 }
 
 /// Tracks 95th-percentile over a rolling window for normalization.
+///
+/// `min_reference` is the absolute minimum value used in the denominator.
+/// Without it, a steady-state quiet signal (room hum, fan noise) sets P95
+/// to the hum level itself, and `x / P95` outputs ~1.0 even for ambient.
+/// With it, the denominator never falls below the noise floor, so quiet
+/// rooms produce small output, and only signals louder than the floor
+/// (i.e. actual music) auto-normalize.
 #[derive(Debug, Clone)]
 pub struct AutoGain {
     history: VecDeque<f32>,
     capacity: usize,
+    min_reference: f32,
 }
 
 impl AutoGain {
-    pub fn new(window_secs: f32, rate_hz: f32) -> Self {
+    pub fn new(window_secs: f32, rate_hz: f32, min_reference: f32) -> Self {
         let capacity = (window_secs * rate_hz).ceil() as usize;
         Self {
             history: VecDeque::with_capacity(capacity),
             capacity: capacity.max(1),
+            min_reference: min_reference.max(1e-6),
         }
+    }
+
+    /// Override the noise-floor minimum reference. Called from the audio
+    /// thread each tick so the UI can tune it live.
+    pub fn set_min_reference(&mut self, v: f32) {
+        self.min_reference = v.max(1e-6);
     }
 
     pub fn observe(&mut self, x: f32) {
@@ -57,8 +72,8 @@ impl AutoGain {
         self.history.push_back(x);
     }
 
-    /// Map raw input to normalized [0, 1] using the rolling 95th percentile
-    /// as "loud" reference. Falls back to 1.0 of identity scale until the
+    /// Map raw input to normalized [0, 1] using max(P95, min_reference) as
+    /// the "loud" reference. Falls back to identity (clamped) until the
     /// window has at least `min_samples` observations.
     pub fn normalize(&self, x: f32, min_samples: usize) -> f32 {
         if self.history.len() < min_samples {
@@ -68,11 +83,8 @@ impl AutoGain {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let p95_idx = (sorted.len() as f32 * 0.95) as usize;
         let p95 = sorted[p95_idx.min(sorted.len() - 1)];
-        if p95 <= 1e-6 {
-            0.0
-        } else {
-            (x / p95).clamp(0.0, 1.0)
-        }
+        let denom = p95.max(self.min_reference);
+        (x / denom).clamp(0.0, 1.0)
     }
 }
 
@@ -99,7 +111,8 @@ mod tests {
 
     #[test]
     fn auto_gain_normalizes_to_p95() {
-        let mut g = AutoGain::new(1.0, 100.0); // 100 samples
+        // min_reference well below the data so P95 controls the denominator
+        let mut g = AutoGain::new(1.0, 100.0, 0.01);
         for v in 0..100 {
             g.observe(v as f32 / 100.0); // 0.0 to 0.99
         }
@@ -110,18 +123,44 @@ mod tests {
 
     #[test]
     fn auto_gain_returns_clamp_when_window_too_short() {
-        let g = AutoGain::new(1.0, 100.0);
+        let g = AutoGain::new(1.0, 100.0, 5.0);
         let n = g.normalize(0.7, 50);
         assert_eq!(n, 0.7);
     }
 
     #[test]
     fn auto_gain_handles_silent_window() {
-        let mut g = AutoGain::new(1.0, 100.0);
+        let mut g = AutoGain::new(1.0, 100.0, 5.0);
         for _ in 0..100 {
             g.observe(0.0);
         }
         let n = g.normalize(0.5, 50);
-        assert_eq!(n, 0.0);
+        // P95 = 0, but denom = max(0, 5.0) = 5.0; 0.5/5.0 = 0.1
+        assert!((n - 0.1).abs() < 1e-4);
+    }
+
+    #[test]
+    fn auto_gain_floors_steady_state_quiet_signals() {
+        // Simulates room hum: steady 2.0, well below min_reference of 8.0.
+        // Without min_reference, P95 = 2.0 and x/P95 = 1.0 (the bug).
+        // With min_reference, denom = max(2.0, 8.0) = 8.0; 2.0/8.0 = 0.25.
+        let mut g = AutoGain::new(1.0, 100.0, 8.0);
+        for _ in 0..100 {
+            g.observe(2.0);
+        }
+        let n = g.normalize(2.0, 50);
+        assert!(n < 0.3, "steady hum should not saturate (got {n})");
+    }
+
+    #[test]
+    fn auto_gain_passes_loud_dynamic_signals() {
+        // Music-like: P95 ends up at 50, above min_reference of 8.
+        // x = 50 should normalize to ~1.0.
+        let mut g = AutoGain::new(1.0, 100.0, 8.0);
+        for v in 0..100 {
+            g.observe(v as f32 * 0.5); // 0..49.5
+        }
+        let n = g.normalize(50.0, 50);
+        assert!(n > 0.9, "loud signal should saturate (got {n})");
     }
 }

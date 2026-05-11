@@ -157,6 +157,14 @@ fn key_to_raw(k: Key) -> Option<RawKey> {
         Key::KEY_L => "L".into(),
         Key::KEY_M => "M".into(),
         Key::KEY_N => "N".into(),
+        Key::KEY_UP => "Up".into(),
+        Key::KEY_DOWN => "Down".into(),
+        Key::KEY_LEFT => "Left".into(),
+        Key::KEY_RIGHT => "Right".into(),
+        Key::KEY_PAGEUP => "PageUp".into(),
+        Key::KEY_PAGEDOWN => "PageDown".into(),
+        Key::KEY_HOME => "Home".into(),
+        Key::KEY_END => "End".into(),
         _ => return None,
     })
 }

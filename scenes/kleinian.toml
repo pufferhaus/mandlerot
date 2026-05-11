@@ -1,0 +1,75 @@
+name = "kleinian"
+display_name = "Pseudo-Kleinian"
+
+[[params]]
+slot = 0
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "cam_distance"
+min = 2.0
+max = 6.0
+default = 3.2
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.18
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "detail"
+min = 16.0
+max = 96.0
+default = 56.0
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "iterations"
+min = 4.0
+max = 12.0
+default = 8.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "csize_x"
+min = 0.7
+max = 1.3
+default = 1.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.10
+audio_polarity = 1.0
+
+[[params]]
+slot = 6
+name = "csize_y"
+min = 0.7
+max = 1.3
+default = 1.0
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "csize_z"
+min = 0.7
+max = 1.5
+default = 1.2
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.12
+audio_polarity = 1.0

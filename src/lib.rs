@@ -30,6 +30,8 @@ pub mod status;
 
 pub mod overlay;
 
+pub mod ui;
+
 pub mod supervisor;
 
 pub mod watchdog;

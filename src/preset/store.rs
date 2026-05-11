@@ -1,5 +1,5 @@
-//! Preset save / recall. Stored as JSON, params keyed by name (not slot
-//! index) so scene refactors don't corrupt presets.
+//! Look save / recall. Stored as JSON, params keyed by name (not slot
+//! index) so scene refactors don't corrupt looks.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -11,13 +11,13 @@ use crate::scene::{ParamMap, SceneLibrary};
 use crate::state::{BlendMode, LayerState, SharedState};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PresetFile {
+pub struct LooksFile {
     pub version: u32,
-    pub slots: BTreeMap<String, Preset>,
+    pub slots: BTreeMap<String, Look>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Preset {
+pub struct Look {
     pub name: String,
     pub saved_at: String,
     pub scene_a: String,
@@ -30,18 +30,18 @@ pub struct Preset {
     pub params_b: BTreeMap<String, f32>,
 }
 
-pub struct PresetStore {
+pub struct LookStore {
     pub path: PathBuf,
-    pub file: PresetFile,
+    pub file: LooksFile,
 }
 
-impl PresetStore {
+impl LookStore {
     pub fn load_or_empty(path: &Path) -> Result<Self> {
         let file = if path.exists() {
             let s = std::fs::read_to_string(path)?;
-            serde_json::from_str(&s).map_err(|e| Error::Backend(format!("preset parse: {e}")))?
+            serde_json::from_str(&s).map_err(|e| Error::Backend(format!("looks parse: {e}")))?
         } else {
-            PresetFile {
+            LooksFile {
                 version: 1,
                 slots: BTreeMap::new(),
             }
@@ -54,7 +54,7 @@ impl PresetStore {
 
     /// Save the current state into slot N. Atomic: write tmp, fsync, rename.
     pub fn save(&mut self, slot: u8, state: &SharedState, name: Option<String>) -> Result<()> {
-        let preset = Preset {
+        let look = Look {
             name: name.unwrap_or_else(|| format!("slot {slot}")),
             saved_at: now_iso8601(),
             scene_a: state.layer_a.scene_name.clone(),
@@ -65,7 +65,7 @@ impl PresetStore {
             params_a: param_values(&state.layer_a.params),
             params_b: param_values(&state.layer_b.params),
         };
-        self.file.slots.insert(slot.to_string(), preset);
+        self.file.slots.insert(slot.to_string(), look);
         self.file.version = 1;
         self.flush()
     }
@@ -75,7 +75,7 @@ impl PresetStore {
     pub fn recall(&self, slot: u8, state: &mut SharedState, lib: &SceneLibrary) -> Result<()> {
         let key = slot.to_string();
         let Some(p) = self.file.slots.get(&key) else {
-            return Err(Error::Backend(format!("preset slot {slot} empty")));
+            return Err(Error::Backend(format!("look slot {slot} empty")));
         };
         if let Ok(scene) = lib.require(&p.scene_a) {
             let mut pm = ParamMap::from_scene(&scene.meta);
@@ -87,7 +87,7 @@ impl PresetStore {
                 params: pm,
             };
         } else {
-            tracing::warn!("preset slot {slot}: scene_a '{}' not in library", p.scene_a);
+            tracing::warn!("look slot {slot}: scene_a '{}' not in library", p.scene_a);
         }
         if let Ok(scene) = lib.require(&p.scene_b) {
             let mut pm = ParamMap::from_scene(&scene.meta);
@@ -99,21 +99,21 @@ impl PresetStore {
                 params: pm,
             };
         } else {
-            tracing::warn!("preset slot {slot}: scene_b '{}' not in library", p.scene_b);
+            tracing::warn!("look slot {slot}: scene_b '{}' not in library", p.scene_b);
         }
         state.xfade = p.xfade.clamp(0.0, 1.0);
         if let Some(bm) = BlendMode::parse(&p.blend_mode) {
             state.blend_mode = bm;
         }
         state.audio_bypass = p.audio_bypass;
-        state.active_preset_slot = Some(slot);
-        state.preset_dirty = false;
+        state.active_look_slot = Some(slot);
+        state.look_dirty = false;
         Ok(())
     }
 
     fn flush(&self) -> Result<()> {
         let body = serde_json::to_string_pretty(&self.file)
-            .map_err(|e| Error::Backend(format!("serialize preset: {e}")))?;
+            .map_err(|e| Error::Backend(format!("serialize looks: {e}")))?;
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, body)?;
         // fsync the tmp file
@@ -204,7 +204,7 @@ mod tests {
         s.layer_a.params.set("hue", 0.8);
         s.xfade = 0.3;
         s.blend_mode = BlendMode::Add;
-        let mut store = PresetStore::load_or_empty(&path).unwrap();
+        let mut store = LookStore::load_or_empty(&path).unwrap();
         store.save(3, &s, Some("test".into())).unwrap();
 
         // Mutate state, then recall.
@@ -216,8 +216,8 @@ mod tests {
         assert_eq!(s.layer_a.params.get("hue"), Some(0.8));
         assert_eq!(s.xfade, 0.3);
         assert_eq!(s.blend_mode, BlendMode::Add);
-        assert_eq!(s.active_preset_slot, Some(3));
-        assert!(!s.preset_dirty);
+        assert_eq!(s.active_look_slot, Some(3));
+        assert!(!s.look_dirty);
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         let path = tmp.path().join("p.json");
         let lib = library();
         let mut s = state(&lib);
-        let mut store = PresetStore::load_or_empty(&path).unwrap();
+        let mut store = LookStore::load_or_empty(&path).unwrap();
         store.save(1, &s, None).unwrap();
 
         // Now construct a library missing 'plasma' → recall should keep layer_a alone.
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn parses_existing_fixture() {
         let s = include_str!("../../tests/fixtures/preset_v1.json");
-        let f: PresetFile = serde_json::from_str(s).unwrap();
+        let f: LooksFile = serde_json::from_str(s).unwrap();
         assert_eq!(f.version, 1);
         assert!(f.slots.contains_key("1"));
         let p = &f.slots["1"];
@@ -255,7 +255,7 @@ mod tests {
     fn empty_path_loads_empty_store() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("nonexistent.json");
-        let store = PresetStore::load_or_empty(&path).unwrap();
+        let store = LookStore::load_or_empty(&path).unwrap();
         assert_eq!(store.file.version, 1);
         assert!(store.file.slots.is_empty());
     }
@@ -266,7 +266,7 @@ mod tests {
         let path = tmp.path().join("p.json");
         let lib = library();
         let s = state(&lib);
-        let mut store = PresetStore::load_or_empty(&path).unwrap();
+        let mut store = LookStore::load_or_empty(&path).unwrap();
         store.save(1, &s, None).unwrap();
         assert!(path.exists());
         assert!(!path.with_extension("json.tmp").exists());

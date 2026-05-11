@@ -1,0 +1,78 @@
+name = "menger_sponge"
+display_name = "Menger Sponge"
+
+[[params]]
+slot = 0
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "cam_distance"
+min = 1.8
+max = 6.0
+default = 3.2
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.20
+audio_polarity = -1.0
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.12
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.18
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "detail"
+min = 16.0
+max = 96.0
+default = 48.0
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "iterations"
+min = 2.0
+max = 6.0
+default = 4.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "twist"
+min = -1.0
+max = 1.0
+default = 0.0
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.25
+audio_polarity = 1.0
+
+[[params]]
+slot = 6
+name = "cross_scale"
+min = 0.8
+max = 1.5
+default = 1.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.12
+audio_polarity = 1.0
+
+[[params]]
+slot = 7
+name = "outer_size"
+min = 0.5
+max = 1.2
+default = 1.0
+curve = "linear"

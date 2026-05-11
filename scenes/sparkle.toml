@@ -1,0 +1,75 @@
+name = "sparkle"
+display_name = "Sparkle"
+
+[[params]]
+slot = 0
+name = "count"
+min = 16.0
+max = 256.0
+default = 96.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "lifetime"
+min = 0.3
+max = 3.0
+default = 1.2
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "size"
+min = 0.005
+max = 0.08
+default = 0.025
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.85
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.10
+audio_polarity = 1.0
+
+[[params]]
+slot = 4
+name = "bg_glow"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "motion"
+min = 0.0
+max = 1.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "beat_boost"
+min = 0.0
+max = 1.0
+default = 0.5
+curve = "linear"
+audio_route = "beat"
+audio_amount = 0.3
+audio_polarity = 1.0
+
+[[params]]
+slot = 7
+name = "brightness"
+min = 0.5
+max = 2.0
+default = 1.0
+curve = "linear"

@@ -11,6 +11,7 @@ use crate::audio::bands::{BandBinner, FFT_SIZE};
 use crate::audio::beat::BeatDetector;
 use crate::audio::capture::CaptureStream;
 use crate::audio::envelope::{AutoGain, EnvelopeFollower};
+use crate::audio::params::AudioParams;
 
 const UPDATE_HZ: f32 = 100.0;
 
@@ -65,6 +66,7 @@ impl Default for AtomicAudio {
 
 pub fn spawn(
     atomic: Arc<AtomicAudio>,
+    params: Arc<AudioParams>,
     stop: Arc<std::sync::atomic::AtomicBool>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
@@ -82,11 +84,19 @@ pub fn spawn(
             EnvelopeFollower::new(0.005, 0.2, UPDATE_HZ),
             EnvelopeFollower::new(0.005, 0.2, UPDATE_HZ),
         ];
+        // Initial noise floor seeds the AutoGain; it's refreshed each tick
+        // from the live `params` Arc so the Settings menu can tune it
+        // without restart. Env var still respected for one-shot overrides
+        // (CI, smoke tests) but is no longer the only knob.
+        let initial_floor = std::env::var("MANDLEROT_NOISE_FLOOR")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| params.noise_floor());
         let mut gains = [
-            AutoGain::new(5.0, UPDATE_HZ),
-            AutoGain::new(5.0, UPDATE_HZ),
-            AutoGain::new(5.0, UPDATE_HZ),
-            AutoGain::new(5.0, UPDATE_HZ),
+            AutoGain::new(5.0, UPDATE_HZ, initial_floor),
+            AutoGain::new(5.0, UPDATE_HZ, initial_floor),
+            AutoGain::new(5.0, UPDATE_HZ, initial_floor),
+            AutoGain::new(5.0, UPDATE_HZ, initial_floor),
         ];
         let mut beat = BeatDetector::new(UPDATE_HZ);
         let mut window = [0.0; FFT_SIZE];
@@ -98,14 +108,19 @@ pub fn spawn(
                 rb.read_latest(&mut window)
             };
             if got {
+                // Refresh live-tunable params on each tick. Cheap: 5 atomic
+                // loads + arithmetic. The cost of a stale value for one tick
+                // (worst case) is invisible to the eye.
+                let floor = params.noise_floor();
                 let (raw_bands, spec_mags) = binner.process_with_mags(&window);
-                // Convert log magnitudes to linear-ish, then envelope+gain.
                 let mut out = [0.0; 4];
                 for i in 0..4 {
                     let lin = raw_bands[i].exp().min(1e6); // log → linear
                     envs[i].update(lin);
+                    gains[i].set_min_reference(floor);
                     gains[i].observe(envs[i].value);
-                    out[i] = gains[i].normalize(envs[i].value, 50);
+                    let normalized = gains[i].normalize(envs[i].value, 50);
+                    out[i] = (normalized * params.gain(i)).clamp(0.0, 1.0);
                 }
                 atomic.store_bands(out);
                 // Beat detection on the same window's spectral magnitudes

@@ -1,3 +1,4 @@
+pub mod double_tap;
 pub mod keymap;
 pub mod mock;
 

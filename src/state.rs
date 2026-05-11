@@ -1,10 +1,12 @@
+use crate::preset::SlotBindings;
 use crate::scene::{ParamMap, SceneLibrary};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Scene,
     Param,
-    Preset,
+    /// Combined A+B scene save/recall slots — the VJ term is "Look".
+    Look,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,10 +71,12 @@ pub struct SharedState {
     pub audio_bypass: bool,
     pub freeze_active: bool,
     pub tap_tempo_bpm: f32,
-    pub active_preset_slot: Option<u8>,
-    pub preset_dirty: bool,
+    pub active_look_slot: Option<u8>,
+    pub look_dirty: bool,
     pub last_action_label: String,
     pub status_overlay_visible: bool,
+    /// User-bound slot → scene mappings. Editable via the in-app menu.
+    pub slot_bindings: SlotBindings,
 }
 
 impl SharedState {
@@ -106,10 +110,11 @@ impl SharedState {
             audio_bypass: false,
             freeze_active: false,
             tap_tempo_bpm: 0.0,
-            active_preset_slot: None,
-            preset_dirty: false,
+            active_look_slot: None,
+            look_dirty: false,
             last_action_label: String::new(),
             status_overlay_visible: false,
+            slot_bindings: SlotBindings::default(),
         })
     }
 
@@ -209,8 +214,8 @@ mod tests_plan2 {
         assert!(!s.audio_bypass);
         assert!(!s.freeze_active);
         assert_eq!(s.tap_tempo_bpm, 0.0);
-        assert_eq!(s.active_preset_slot, None);
-        assert!(!s.preset_dirty);
+        assert_eq!(s.active_look_slot, None);
+        assert!(!s.look_dirty);
     }
 
     fn test_lib() -> SceneLibrary {

@@ -4,7 +4,7 @@ height = 480
 fps = 30
 
 [initial]
-scene_a = "plasma"
+scene_a = "vectorscope"
 scene_b = "solid"
 xfade = 0.0
 blend_mode = "mix"

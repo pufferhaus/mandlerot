@@ -166,5 +166,8 @@ action = "SceneCycle:A:1"
 key = "F3"
 action = "SceneCycle:B:1"
 [[binding]]
+key = "F4"
+action = "OpenMenu:Settings"
+[[binding]]
 key = "F5"
 action = "ReloadAllScenes"

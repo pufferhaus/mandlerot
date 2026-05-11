@@ -6,7 +6,7 @@ use crate::state::{BlendMode, Layer};
 pub enum Action {
     /// Number-row slot pressed. Meaning depends on current `Mode`.
     Slot { n: u8, other_layer: bool },
-    /// Tab — advance mode (Scene → Param → Preset → Scene).
+    /// Tab — advance mode (Scene → Param → Look → Scene).
     AdvanceMode,
     /// Toggle active layer A↔B (Enter on numpad, `\` on keyboard).
     ToggleLayer,
@@ -36,19 +36,33 @@ pub enum Action {
     ReloadAllScenes,
     /// Scene cycle next on a layer (dev keys F2/F3).
     SceneCycle { layer: Layer, dir: i8 },
-    /// Set explicit blend mode (used by preset recall).
+    /// Set explicit blend mode (used by look recall).
     SetBlendMode(BlendMode),
-    /// Set explicit xfade (used by preset recall).
+    /// Set explicit xfade (used by look recall).
     SetXfade(f32),
     /// Set explicit scene on a layer (used by Slot in SCENE mode).
     SetSceneByIndex { layer: Layer, index: u8 },
-    /// Recall preset slot 1-8 (PRESET mode + slot key, no modifier).
-    RecallPreset { slot: u8 },
-    /// Save current state to preset slot 1-8 (PRESET mode + slot key + modifier).
-    SavePreset { slot: u8 },
+    /// Set scene on a layer by name. Used when slot resolution went through
+    /// SlotBindings; `SetSceneByIndex` is reserved for ordinal walks
+    /// (`SceneCycle` and the legacy alphabetical fallback).
+    SetSceneByName { layer: Layer, name: String },
+    /// Recall look slot 1-8 (LOOK mode + slot key, no modifier).
+    RecallLook { slot: u8 },
+    /// Save current state to look slot 1-8 (LOOK mode + slot key + modifier).
+    SaveLook { slot: u8 },
     /// Toggle the debug overlay. Currently a no-op until Plan 3 lands the
     /// overlay state; included now so F1 doesn't silently fire `Trigger`.
     DebugOverlayToggle,
+    /// Open a named menu screen on top of the status panel. Input is routed
+    /// to that screen until it (and any pushed children) are dismissed.
+    OpenMenu(MenuKind),
+}
+
+/// Identifiers for the top-level menu entry points reachable by a key. Each
+/// variant maps to a constructor in `crate::ui::screens`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuKind {
+    Settings,
 }
 
 #[cfg(test)]

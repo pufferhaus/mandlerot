@@ -1,7 +1,30 @@
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::Result;
+
+/// Resolve the directory where user-writable state lives.
+///
+/// Order:
+///   1. `$MANDLEROT_STATE_DIR` (set by the systemd unit on the Pi).
+///   2. `<exec_dir>/.config/mandleROT/` next to the binary (dev fallback).
+///   3. `./.config/mandleROT/` relative to CWD (last-ditch).
+///
+/// The returned directory is created if it doesn't already exist.
+pub fn user_state_dir() -> PathBuf {
+    if let Some(env_dir) = std::env::var_os("MANDLEROT_STATE_DIR") {
+        let p = PathBuf::from(env_dir);
+        let _ = std::fs::create_dir_all(&p);
+        return p;
+    }
+    let base = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let dir = base.join(".config").join("mandleROT");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {

@@ -1,0 +1,75 @@
+name = "crt_collapse"
+display_name = "CRT Collapse"
+
+[[params]]
+slot = 0
+name = "scan_depth"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "aberration"
+min = 0.0
+max = 1.0
+default = 0.5
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.25
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "roll_rate"
+min = 0.0
+max = 1.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "roll_speed"
+min = 0.5
+max = 4.0
+default = 1.5
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "snow_amount"
+min = 0.0
+max = 1.0
+default = 0.3
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.2
+audio_polarity = 1.0
+
+[[params]]
+slot = 5
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "brightness"
+min = 0.5
+max = 2.0
+default = 1.0
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "tint_warp"
+min = 0.0
+max = 1.0
+default = 0.3
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.2
+audio_polarity = 1.0

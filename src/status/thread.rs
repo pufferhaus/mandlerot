@@ -18,6 +18,11 @@ use super::Backend;
 /// Cheap copy of state for cross-thread send. Avoids cloning the full library.
 pub struct StateSnapshot {
     pub state: SharedState,
+    /// If a menu screen is open on the main thread, the pre-rendered grid
+    /// is sent here. The worker thread blits this directly instead of
+    /// composing from `state` — so menu rendering doesn't need to know
+    /// about scene library plumbing.
+    pub menu_grid: Option<super::grid::TextScreen>,
 }
 
 pub struct StatusHandle {
@@ -57,7 +62,10 @@ pub fn spawn(
                 latest = Some(snap);
             }
             if let Some(snap) = latest {
-                let next = state_to_grid(&snap.state, &library);
+                let next = match snap.menu_grid {
+                    Some(g) => g,
+                    None => state_to_grid(&snap.state, &library),
+                };
                 let runs = next.diff_runs(&prev);
                 if !runs.is_empty() {
                     super::render::render_runs(&next, &runs, &mut fb);

@@ -48,6 +48,14 @@ fn key_to_raw(logical: &Key, physical: PhysicalKey) -> Option<RawKey> {
             NamedKey::F3 => "F3".into(),
             NamedKey::F4 => "F4".into(),
             NamedKey::F5 => "F5".into(),
+            NamedKey::ArrowUp => "Up".into(),
+            NamedKey::ArrowDown => "Down".into(),
+            NamedKey::ArrowLeft => "Left".into(),
+            NamedKey::ArrowRight => "Right".into(),
+            NamedKey::PageUp => "PageUp".into(),
+            NamedKey::PageDown => "PageDown".into(),
+            NamedKey::Home => "Home".into(),
+            NamedKey::End => "End".into(),
             _ => return None,
         });
     }

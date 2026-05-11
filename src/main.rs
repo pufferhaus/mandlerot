@@ -22,14 +22,17 @@ impl mandlerot::status::Backend for NullBackend {
 use anyhow::Context;
 use clap::Parser;
 
-use mandlerot::action::Action;
+use mandlerot::action::{Action, MenuKind};
 use mandlerot::apply::apply;
+use mandlerot::audio::params::AudioParams;
 use mandlerot::audio::thread::{spawn as spawn_audio, AtomicAudio};
 use mandlerot::config::Config;
 use mandlerot::hot_reload::{HotReloader, ReloadEvent};
+use mandlerot::input::double_tap::DoubleTap;
 use mandlerot::input::keymap::{KeyMap, Modifier};
 use mandlerot::input::mock::MockInput;
-use mandlerot::preset::PresetStore;
+use mandlerot::preset::{LookStore, SlotBindings};
+use mandlerot::ui::{RenderCtx, ScreenCtx, ScreenStack};
 use mandlerot::render::pipeline::Pipeline;
 use mandlerot::render::target::RenderTarget;
 use mandlerot::scene::{LoadedScene, SceneLibrary, SceneMeta};
@@ -45,8 +48,11 @@ struct Cli {
     scenes: PathBuf,
     #[arg(long, default_value = "keymap.toml")]
     keymap: PathBuf,
-    #[arg(long, default_value = "presets.json")]
-    presets: PathBuf,
+    /// Path to the persistent looks/preset JSON. Defaults to `looks.json`
+    /// in the working directory; if missing, a legacy `presets.json` will
+    /// be migrated in place on first run.
+    #[arg(long, default_value = "looks.json", alias = "presets")]
+    looks: PathBuf,
     /// Headless smoke: render N frames and exit.
     #[arg(long)]
     smoke_frames: Option<u32>,
@@ -70,7 +76,20 @@ fn main() -> anyhow::Result<()> {
     let cfg = Config::load(&cli.config).context("load config")?;
     let mut library = SceneLibrary::load_dir(&cli.scenes).context("load scenes")?;
     let keymap = KeyMap::load(&cli.keymap).context("load keymap")?;
-    let mut presets = PresetStore::load_or_empty(&cli.presets).context("load presets")?;
+    // One-time migration: rename legacy `presets.json` to the new `looks.json`
+    // location if the new file is missing. Idempotent — runs every startup
+    // but only acts when the conditions are exactly right.
+    if !cli.looks.exists() {
+        let legacy = std::path::PathBuf::from("presets.json");
+        if legacy.exists() {
+            if let Err(e) = std::fs::rename(&legacy, &cli.looks) {
+                tracing::warn!("migrate presets.json → {:?} failed: {e}", cli.looks);
+            } else {
+                tracing::info!("migrated presets.json → {:?}", cli.looks);
+            }
+        }
+    }
+    let mut looks = LookStore::load_or_empty(&cli.looks).context("load looks")?;
     let blend_mode = BlendMode::parse(&cfg.initial.blend_mode).unwrap_or(BlendMode::Mix);
     let mut state = SharedState::from_initial(
         &library,
@@ -79,6 +98,14 @@ fn main() -> anyhow::Result<()> {
         cfg.initial.xfade,
         blend_mode,
     )?;
+    let state_dir = mandlerot::config::user_state_dir();
+    state.slot_bindings = SlotBindings::load_or_empty(&state_dir);
+    let audio_params = AudioParams::load_or_default(&state_dir);
+    let mut ui_stack = ScreenStack::new();
+    // Double-tap Esc/Backspace is the unconditional escape hatch: even
+    // with a menu open (which normally swallows Esc), two quick taps
+    // close the menu *and* fire Panic.
+    let mut esc_double = DoubleTap::new(400);
 
     #[cfg(all(feature = "desktop", not(feature = "pi")))]
     let mut target = {
@@ -111,7 +138,11 @@ fn main() -> anyhow::Result<()> {
     let audio_stop = Arc::new(AtomicBool::new(false));
     let audio_history = mandlerot::audio::history::AudioHistory::new();
     let _audio_thread = if cli.replay.is_none() {
-        Some(spawn_audio(audio_atomic.clone(), audio_stop.clone()))
+        Some(spawn_audio(
+            audio_atomic.clone(),
+            audio_params.clone(),
+            audio_stop.clone(),
+        ))
     } else {
         None
     };
@@ -232,13 +263,56 @@ fn main() -> anyhow::Result<()> {
             }
         }
         for (key, modifier) in events {
+            // Double-tap Esc/Backspace fires Panic *and* closes any open
+            // menu — runs before stack dispatch so menus can't swallow it.
+            if matches!(key.as_str(), "Esc" | "Backspace")
+                && esc_double.tap(Instant::now())
+            {
+                ui_stack.close_all();
+                handle_action(
+                    &Action::Panic,
+                    &mut state,
+                    &library,
+                    &mut looks,
+                    &mut tap_tempo,
+                );
+                state.last_action_label = "Panic (double-esc)".to_string();
+                continue;
+            }
+            // While a menu screen is open, all key events go to it. The menu
+            // operates on bindings (persistent) and never touches the live
+            // shader state, so the running visuals stay in sync regardless.
+            if ui_stack.is_open() {
+                let scene_names: Vec<String> = library
+                    .names()
+                    .filter(|n| !n.starts_with("__"))
+                    .map(|s| s.to_string())
+                    .collect();
+                let mut ctx = ScreenCtx {
+                    scenes: &scene_names,
+                    bindings: &mut state.slot_bindings,
+                    state_dir: &state_dir,
+                    audio: &audio_params,
+                };
+                ui_stack.handle_key(&key, &mut ctx);
+                continue;
+            }
             if let Some(action) = keymap.lookup(&key, modifier, &state) {
+                // F4 (or any OpenMenu) is intercepted here so we don't push
+                // the action through `apply` — the menu lives entirely on
+                // the main thread alongside the screen stack.
+                if let Action::OpenMenu(kind) = &action {
+                    match kind {
+                        MenuKind::Settings => ui_stack.open(Box::new(
+                            mandlerot::ui::screens::SettingsScreen::new(),
+                        )),
+                    }
+                    state.last_action_label = format!("OpenMenu({kind:?})");
+                    continue;
+                }
                 let old_a = state.layer_a.scene_name.clone();
                 let old_b = state.layer_b.scene_name.clone();
-                handle_action(&action, &mut state, &library, &mut presets, &mut tap_tempo);
-                // Spec section 11: a manual re-select clears any auto-disable
-                // applied by the supervisor, giving the user a fresh fault
-                // budget.
+                handle_action(&action, &mut state, &library, &mut looks, &mut tap_tempo);
                 if state.layer_a.scene_name != old_a {
                     supervisor.enable(&state.layer_a.scene_name);
                 }
@@ -295,8 +369,27 @@ fn main() -> anyhow::Result<()> {
             state.layer_b.scene_name = resolved_b;
         }
 
+        // If a menu is open, paint it on the main thread (where bindings and
+        // scene names live) and send the rendered grid; the status worker
+        // blits it verbatim instead of composing from state.
+        let menu_grid = if ui_stack.is_open() {
+            let scene_names: Vec<String> = library
+                .names()
+                .filter(|n| !n.starts_with("__"))
+                .map(|s| s.to_string())
+                .collect();
+            let rctx = RenderCtx {
+                scenes: &scene_names,
+                bindings: &state.slot_bindings,
+                audio: &audio_params,
+            };
+            ui_stack.render_top(&rctx)
+        } else {
+            None
+        };
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
             state: state.clone(),
+            menu_grid,
         });
 
         if let Err(e) = pipeline.frame(&state, target.dimensions().0, target.dimensions().1) {
@@ -350,7 +443,7 @@ fn handle_action(
     action: &Action,
     state: &mut SharedState,
     lib: &SceneLibrary,
-    presets: &mut PresetStore,
+    looks: &mut LookStore,
     tap: &mut TapTempo,
 ) {
     // Set the status panel's "LAST" label up front so early-return paths
@@ -367,20 +460,20 @@ fn handle_action(
             state.trigger = 1.0;
             return;
         }
-        // Preset save/recall: in PRESET mode, slot 1-8 with other_layer=true → save,
+        // Look save/recall: in LOOK mode, slot 1-8 with other_layer=true → save,
         //                                   slot 1-8 with other_layer=false → recall.
         Action::Slot { n, other_layer }
-            if state.active_mode == Mode::Preset && (1..=8).contains(n) =>
+            if state.active_mode == Mode::Look && (1..=8).contains(n) =>
         {
             let slot = *n;
             if *other_layer {
-                if let Err(e) = presets.save(slot, state, None) {
+                if let Err(e) = looks.save(slot, state, None) {
                     tracing::warn!("preset save: {e}");
                 } else {
-                    state.active_preset_slot = Some(slot);
-                    state.preset_dirty = false;
+                    state.active_look_slot = Some(slot);
+                    state.look_dirty = false;
                 }
-            } else if let Err(e) = presets.recall(slot, state, lib) {
+            } else if let Err(e) = looks.recall(slot, state, lib) {
                 tracing::warn!("preset recall: {e}");
             }
             return;

@@ -15,9 +15,28 @@ pub fn state_to_grid(state: &SharedState, _lib: &SceneLibrary) -> TextScreen {
     write_layer_headers(&mut g, state);
     write_layer_params(&mut g, state);
     write_xfade(&mut g, state);
-    write_audio_presets_last(&mut g, state);
+    write_audio_looks_last(&mut g, state);
     write_hotkeys(&mut g);
+    apply_active_layer_invert(&mut g, state);
     g
+}
+
+/// Highlight the active layer by inverting just the header row of its
+/// card. Param rows stay normal so the readout still reads cleanly. Inside
+/// the inverted band, ATTR_DIM is stripped — a brown bg muddied the look,
+/// especially under the row of `─` filler chars between the layer label
+/// and the scene name. Stripping dim makes that band a clean amber bar.
+fn apply_active_layer_invert(g: &mut TextScreen, state: &SharedState) {
+    let (col_lo, col_hi_excl) = match state.active_layer {
+        Layer::A => (1usize, 40usize),
+        Layer::B => (41usize, 79usize),
+    };
+    for col in col_lo..col_hi_excl {
+        let mut c = g.at(1, col);
+        c.attr ^= ATTR_INVERSE;
+        c.attr &= !ATTR_DIM;
+        g.set(1, col, c);
+    }
 }
 
 /// Outer rectangle border + horizontal row dividers at fixed rows.
@@ -39,7 +58,7 @@ fn fill_borders(g: &mut TextScreen) {
     for r in 2..10 {
         g.set(r, 40, Cell::new('│', ATTR_DIM));
     }
-    // Audio/Presets/Last separators (rows 13..17)
+    // Audio/Looks/Last separators (rows 13..17)
     for r in 13..17 {
         g.set(r, 11, Cell::new('│', ATTR_DIM));
         g.set(r, 46, Cell::new('│', ATTR_DIM));
@@ -50,7 +69,7 @@ fn write_top_bar(g: &mut TextScreen, state: &SharedState) {
     let mode_str = match state.active_mode {
         Mode::Scene => "SCENE",
         Mode::Param => "PARAM",
-        Mode::Preset => "PRESET",
+        Mode::Look => "LOOK",
     };
     let layer_str = match state.active_layer {
         Layer::A => "A",
@@ -198,14 +217,14 @@ fn write_xfade(g: &mut TextScreen, state: &SharedState) {
     g.set(11, pos.min(59), Cell::new('█', ATTR_BRIGHT));
 }
 
-fn write_audio_presets_last(g: &mut TextScreen, state: &SharedState) {
+fn write_audio_looks_last(g: &mut TextScreen, state: &SharedState) {
     g.fill(12, 0, 80, '─', ATTR_DIM);
     g.set(12, 0, Cell::new('├', ATTR_DIM));
     g.set(12, 11, Cell::new('┬', ATTR_DIM));
     g.set(12, 46, Cell::new('┬', ATTR_DIM));
     g.set(12, 79, Cell::new('┤', ATTR_DIM));
     g.write(12, 3, ATTR_BRIGHT, "AUDIO");
-    g.write(12, 14, ATTR_BRIGHT, "PRESETS");
+    g.write(12, 14, ATTR_BRIGHT, "LOOKS");
     g.write(12, 49, ATTR_BRIGHT, "LAST");
 
     let labels = ["Bs", "Lo", "Hi", "Tr"];
@@ -222,7 +241,7 @@ fn write_audio_presets_last(g: &mut TextScreen, state: &SharedState) {
     // Presets row 13 — 8 cells
     let mut col = 13;
     for slot in 1..=8 {
-        let active = state.active_preset_slot == Some(slot);
+        let active = state.active_look_slot == Some(slot);
         let attr = if active { ATTR_INVERSE } else { ATTR_DIM };
         g.set(13, col, Cell::new('[', attr));
         g.set(
@@ -338,6 +357,40 @@ mod tests {
         let g = state_to_grid(&state(), &lib());
         for row in 2..10 {
             assert_eq!(g.at(row, 40).ch, '│');
+        }
+    }
+
+    #[test]
+    fn active_layer_a_inverts_header_left() {
+        let g = state_to_grid(&state(), &lib());
+        // active = A by default → row 1 (header), left side, is inverted
+        assert!(g.at(1, 5).attr & ATTR_INVERSE != 0);
+        // ... param rows stay normal
+        assert!(g.at(2, 5).attr & ATTR_INVERSE == 0);
+        // ... right side header is not inverted
+        assert!(g.at(1, 45).attr & ATTR_INVERSE == 0);
+    }
+
+    #[test]
+    fn active_layer_b_inverts_header_right() {
+        let mut s = state();
+        s.active_layer = Layer::B;
+        let g = state_to_grid(&s, &lib());
+        assert!(g.at(1, 45).attr & ATTR_INVERSE != 0);
+        assert!(g.at(1, 5).attr & ATTR_INVERSE == 0);
+    }
+
+    #[test]
+    fn inverted_band_strips_dim() {
+        let g = state_to_grid(&state(), &lib());
+        // The `─` filler around the active "A:" label was ATTR_DIM; after
+        // invert it should no longer have the dim bit set.
+        for col in 1..40 {
+            assert_eq!(
+                g.at(1, col).attr & ATTR_DIM,
+                0,
+                "col {col} still dim inside inverted band"
+            );
         }
     }
 

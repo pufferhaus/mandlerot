@@ -1,0 +1,72 @@
+name = "voxel_terrain"
+display_name = "Voxel Terrain"
+
+[[params]]
+slot = 0
+name = "cam_speed"
+min = 0.0
+max = 3.0
+default = 1.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.2
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "cam_height"
+min = 0.5
+max = 3.0
+default = 1.1
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "detail_scale"
+min = 0.5
+max = 3.0
+default = 1.0
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "fog_density"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.08
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "sky_hue"
+min = 0.0
+max = 1.0
+default = 0.6
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "horizon"
+min = 0.4
+max = 0.8
+default = 0.55
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "brightness"
+min = 0.5
+max = 2.0
+default = 1.0
+curve = "linear"

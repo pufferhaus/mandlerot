@@ -1,0 +1,78 @@
+name = "pipes_3d"
+display_name = "3D Pipes"
+
+[[params]]
+slot = 0
+name = "spin_speed"
+min = 0.0
+max = 2.0
+default = 0.30
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "zoom"
+min = 4.0
+max = 14.0
+default = 8.0
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "hue_base"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.2
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "growth_rate"
+min = 0.2
+max = 3.0
+default = 1.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+audio_polarity = 1.0
+
+[[params]]
+slot = 4
+name = "pipe_radius"
+min = 0.05
+max = 0.25
+default = 0.14
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "reset_period"
+min = 4.0
+max = 30.0
+default = 14.0
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "shininess"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.4
+audio_polarity = 1.0
+
+[[params]]
+slot = 7
+name = "bg_tint"
+min = 0.0
+max = 0.25
+default = 0.04
+curve = "linear"

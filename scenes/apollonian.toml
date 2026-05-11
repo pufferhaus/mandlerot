@@ -1,0 +1,78 @@
+name = "apollonian"
+display_name = "Apollonian"
+
+[[params]]
+slot = 0
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.20
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "cam_distance"
+min = 1.5
+max = 5.0
+default = 3.69
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.15
+audio_polarity = -1.0
+
+[[params]]
+slot = 2
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.78
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 3
+name = "detail"
+min = 16.0
+max = 96.0
+default = 56.0
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "iterations"
+min = 4.0
+max = 10.0
+default = 7.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "fold_scale"
+min = 1.5
+max = 4.0
+default = 2.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.12
+audio_polarity = 1.0
+
+[[params]]
+slot = 6
+name = "ground_dim"
+min = 0.0
+max = 1.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "hue_warp"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.25
+audio_polarity = 1.0

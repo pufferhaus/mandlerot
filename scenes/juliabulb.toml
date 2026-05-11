@@ -1,0 +1,78 @@
+name = "juliabulb"
+display_name = "Juliabulb"
+
+[[params]]
+slot = 0
+name = "c_x"
+min = -1.0
+max = 1.0
+default = -0.2
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.20
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "c_y"
+min = -1.0
+max = 1.0
+default = 0.4
+curve = "linear"
+audio_route = "lomid"
+audio_amount = 0.20
+audio_polarity = 1.0
+
+[[params]]
+slot = 2
+name = "c_z"
+min = -1.0
+max = 1.0
+default = 0.3
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.20
+audio_polarity = -1.0
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.70
+curve = "linear"
+audio_route = "treble"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 4
+name = "detail"
+min = 16.0
+max = 96.0
+default = 48.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "cam_distance"
+min = 1.5
+max = 4.0
+default = 2.6
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "power"
+min = 3.0
+max = 12.0
+default = 8.0
+curve = "linear"

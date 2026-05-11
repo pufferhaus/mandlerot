@@ -1,0 +1,75 @@
+name = "mandelbox"
+display_name = "Mandelbox"
+
+[[params]]
+slot = 0
+name = "scale"
+min = 1.5
+max = 3.5
+default = 2.0
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.15
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "orbit_speed"
+min = 0.0
+max = 2.0
+default = 0.3
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "cam_distance"
+min = 2.5
+max = 8.0
+default = 4.5
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.25
+audio_polarity = -1.0
+
+[[params]]
+slot = 3
+name = "hue"
+min = 0.0
+max = 1.0
+default = 0.55
+curve = "linear"
+audio_route = "himid"
+audio_amount = 0.2
+audio_polarity = 1.0
+
+[[params]]
+slot = 4
+name = "detail"
+min = 16.0
+max = 96.0
+default = 48.0
+curve = "linear"
+
+[[params]]
+slot = 5
+name = "min_radius"
+min = 0.3
+max = 0.8
+default = 0.5
+curve = "linear"
+
+[[params]]
+slot = 6
+name = "fixed_radius"
+min = 0.9
+max = 1.5
+default = 1.0
+curve = "linear"
+
+[[params]]
+slot = 7
+name = "fold_iters"
+min = 4.0
+max = 12.0
+default = 8.0
+curve = "linear"

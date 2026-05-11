@@ -2,6 +2,7 @@
 
 use crate::action::Action;
 use crate::error::Result;
+use crate::preset::resolve_slot;
 use crate::scene::SceneLibrary;
 use crate::state::{BlendMode, Layer, Mode, SharedState};
 
@@ -23,8 +24,8 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         Action::AdvanceMode => {
             state.active_mode = match state.active_mode {
                 Mode::Scene => Mode::Param,
-                Mode::Param => Mode::Preset,
-                Mode::Preset => Mode::Scene,
+                Mode::Param => Mode::Look,
+                Mode::Look => Mode::Scene,
             };
         }
         Action::ToggleLayer => state.active_layer = state.active_layer.other(),
@@ -38,11 +39,11 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         }
         Action::XfadeMinus => {
             state.xfade = (state.xfade - XFADE_STEP).max(0.0);
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
         Action::XfadePlus => {
             state.xfade = (state.xfade + XFADE_STEP).min(1.0);
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
         Action::ParamMinus => apply_param_step(state, -1)?,
         Action::ParamPlus => apply_param_step(state, 1)?,
@@ -58,7 +59,7 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
                 Layer::A => state.layer_a.params = pm,
                 Layer::B => state.layer_b.params = pm,
             }
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
         Action::BlendCycle => {
             let cur_idx = BLEND_MODES
@@ -66,14 +67,14 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
                 .position(|m| *m == state.blend_mode)
                 .unwrap_or(0);
             state.blend_mode = BLEND_MODES[(cur_idx + 1) % BLEND_MODES.len()];
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
         Action::Trigger => state.trigger = 1.0,
         Action::FreezeToggle => state.freeze_active = !state.freeze_active,
         Action::TapTempo => { /* handled by tap-tempo subsystem in Task 24 */ }
         Action::AudioBypass => {
             state.audio_bypass = !state.audio_bypass;
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
         Action::Panic => {
             state.layer_a.scene_name = SAFE_SCENE_NAME.to_string();
@@ -93,24 +94,22 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
                 .map(|s| s.to_string())
                 .collect();
             if let Some(name) = names.get(*index as usize) {
-                let scene = lib.require(name)?;
-                let new_state = crate::state::LayerState {
-                    scene_name: name.clone(),
-                    params: crate::scene::ParamMap::from_scene(&scene.meta),
-                };
-                match layer {
-                    Layer::A => state.layer_a = new_state,
-                    Layer::B => state.layer_b = new_state,
-                }
-                state.preset_dirty = true;
+                set_scene(state, lib, *layer, name)?;
             }
         }
-        Action::RecallPreset { .. } | Action::SavePreset { .. } => {
-            // Handled by caller with PresetStore. Apply layer is purely state-mutating
-            // and doesn't own the preset file.
+        Action::SetSceneByName { layer, name } => {
+            set_scene(state, lib, *layer, name)?;
+        }
+        Action::RecallLook { .. } | Action::SaveLook { .. } => {
+            // Handled by caller with LookStore. Apply layer is purely state-mutating
+            // and doesn't own the looks file.
         }
         Action::DebugOverlayToggle => {
             state.status_overlay_visible = !state.status_overlay_visible;
+        }
+        Action::OpenMenu(_) => {
+            // Stack manipulation lives in main; apply has no state to mutate
+            // here. Kept exhaustive so adding a new menu kind forces a thought.
         }
     }
     Ok(())
@@ -118,15 +117,33 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
 
 pub const SAFE_SCENE_NAME: &str = "__safe__";
 
+fn set_scene(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, name: &str) -> Result<()> {
+    let scene = lib.require(name)?;
+    let new_state = crate::state::LayerState {
+        scene_name: name.to_string(),
+        params: crate::scene::ParamMap::from_scene(&scene.meta),
+    };
+    match layer {
+        Layer::A => state.layer_a = new_state,
+        Layer::B => state.layer_b = new_state,
+    }
+    state.look_dirty = true;
+    Ok(())
+}
+
 fn apply_slot(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, n: u8) -> Result<()> {
     match state.active_mode {
         Mode::Scene => {
             if (1..=9).contains(&n) {
-                let action = Action::SetSceneByIndex {
-                    layer,
-                    index: n - 1,
-                };
-                return apply(&action, state, lib);
+                let names: Vec<String> = lib
+                    .names()
+                    .filter(|nm| !nm.starts_with("__"))
+                    .map(|s| s.to_string())
+                    .collect();
+                if let Some(name) = resolve_slot(&state.slot_bindings, &names, n) {
+                    let name = name.to_string();
+                    return apply(&Action::SetSceneByName { layer, name }, state, lib);
+                }
             }
         }
         Mode::Param => {
@@ -139,12 +156,12 @@ fn apply_slot(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, n: u8) 
                 reset_selected_param(state, lib, layer)?;
             }
         }
-        Mode::Preset => {
+        Mode::Look => {
             if n == 9 {
                 let action = Action::ResetAllParams;
                 return apply(&action, state, lib);
             }
-            // Preset 1-8 handled by caller (main.rs) with access to PresetStore.
+            // Look 1-8 handled by caller (main.rs) with access to LookStore.
             // No-op here.
         }
     }
@@ -165,16 +182,16 @@ fn apply_param_step(state: &mut SharedState, dir: i8) -> Result<()> {
             let step = (def.max - def.min) * 0.02;
             let new_val = cur + step * dir as f32;
             layer_state.params.set(&def.name, new_val);
-            state.preset_dirty = true;
+            state.look_dirty = true;
         }
     } else {
-        // In Scene/Preset modes, -/+ are crossfade nudges instead.
+        // In Scene/Look modes, -/+ are crossfade nudges instead.
         if dir < 0 {
             state.xfade = (state.xfade - XFADE_STEP).max(0.0);
         } else {
             state.xfade = (state.xfade + XFADE_STEP).min(1.0);
         }
-        state.preset_dirty = true;
+        state.look_dirty = true;
     }
     Ok(())
 }
@@ -261,7 +278,7 @@ mod tests {
         apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
         assert_eq!(s.active_mode, Mode::Param);
         apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
-        assert_eq!(s.active_mode, Mode::Preset);
+        assert_eq!(s.active_mode, Mode::Look);
         apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
         assert_eq!(s.active_mode, Mode::Scene);
     }
@@ -273,6 +290,41 @@ mod tests {
         assert_eq!(s.active_layer, Layer::A);
         apply(&Action::ToggleLayer, &mut s, &lib).unwrap();
         assert_eq!(s.active_layer, Layer::B);
+    }
+
+    #[test]
+    fn slot_in_scene_mode_uses_explicit_binding_over_alphabetical() {
+        let lib = three_scenes(); // alpha, beta, gamma alphabetical
+        let mut s = base_state(&lib);
+        s.slot_bindings.set(1, Some("gamma".into()));
+        apply(
+            &Action::Slot {
+                n: 1,
+                other_layer: false,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
+        // Slot 1 would have been "alpha" by alphabetical fallback, but the
+        // explicit binding wins.
+        assert_eq!(s.layer_a.scene_name, "gamma");
+    }
+
+    #[test]
+    fn slot_in_scene_mode_falls_back_to_alphabetical_when_binding_missing() {
+        let lib = three_scenes();
+        let mut s = base_state(&lib);
+        apply(
+            &Action::Slot {
+                n: 2,
+                other_layer: false,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
+        assert_eq!(s.layer_a.scene_name, "beta");
     }
 
     #[test]
@@ -332,14 +384,14 @@ mod tests {
         apply(&Action::ParamPlus, &mut s, &lib).unwrap();
         let after = s.layer_a.params.get("x").unwrap();
         assert!(after > before, "{after} should be > {before}");
-        assert!(s.preset_dirty);
+        assert!(s.look_dirty);
     }
 
     #[test]
     fn slot_9_in_preset_mode_resets_all_params() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
-        s.active_mode = Mode::Preset;
+        s.active_mode = Mode::Look;
         s.layer_a.params.set("x", 0.99);
         apply(
             &Action::Slot {

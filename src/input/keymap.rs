@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::action::Action;
+use crate::action::{Action, MenuKind};
 use crate::error::{Error, Result};
 use crate::state::{Layer, SharedState};
 
@@ -105,6 +105,13 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
         }
         return Ok(ActionTemplate::Slot(n));
     }
+    if let Some(rest) = label.strip_prefix("OpenMenu:") {
+        let kind = match rest {
+            "Settings" => MenuKind::Settings,
+            other => return Err(Error::Backend(format!("unknown menu: {other}"))),
+        };
+        return Ok(ActionTemplate::Static(Action::OpenMenu(kind)));
+    }
     if let Some(rest) = label.strip_prefix("SceneCycle:") {
         // SceneCycle:A:1 or SceneCycle:B:-1
         let parts: Vec<&str> = rest.split(':').collect();
@@ -187,10 +194,11 @@ mod tests {
             audio_bypass: false,
             freeze_active: false,
             tap_tempo_bpm: 0.0,
-            active_preset_slot: None,
-            preset_dirty: false,
+            active_look_slot: None,
+            look_dirty: false,
             last_action_label: String::new(),
             status_overlay_visible: false,
+            slot_bindings: crate::preset::SlotBindings::default(),
         }
     }
 
