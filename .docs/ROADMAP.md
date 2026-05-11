@@ -16,8 +16,8 @@ _(none currently tracked)_
 
 ## Design Notes
 
-- **Combined-state save = "Look"**. Current `Preset` struct already holds both A+B; rename in flight (item 6 below).
-- **Active layer highlight** = full inverted half on the status panel (amber bg, black fg). Inactive side stays normal.
+- **Combined-state save = "Look"** (renamed from Preset). `LookStore` holds scene_a, scene_b, xfade, blend mode, params for both layers.
+- **Active layer highlight** = header row inverted on the status panel (amber bg, black fg). Dim attr stripped inside the band.
 - **User state** lives at `$MANDLEROT_STATE_DIR` (systemd) or `<exec>/.config/mandleROT/`. Bundle reinstalls leave it intact via the `ReadWritePaths` boundary.
 - **Screen stack** (`src/ui/`) is the scalable home for all in-app menus. Adding a screen = one file + register MenuKind / push from parent.
 
@@ -48,6 +48,10 @@ _(none currently tracked)_
 | 21 | Scene: BIOS POST scroll | ✅ | `scenes/bios_post.{glsl,toml}` |
 | 22 | Scene: Audio vectorscope | ✅ | `scenes/vectorscope.{glsl,toml}` |
 | 23 | Scene: Bayer 1-bit dither | ✅ | `scenes/bayer.{glsl,toml}` |
+| 24 | Composite video input (USB capture → live texture as a layer) | ☐ | `src/video/`, `src/render/pipeline.rs`, `src/state.rs` |
+| 25 | Additional blend modes (Overlay, Soft/Hard Light, Dodge/Burn, Lighten/Darken, Exclusion, Subtract, HSL family) | ☐ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
+| 26 | Post-processing FX pipeline (bloom, vignette, grain, CRT, dither, pixelate, LUT) | ☐ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `src/ui/screens/postfx.rs` |
+| 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
 
 Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on completion.
 
@@ -56,5 +60,5 @@ Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on
 - Pi smoke test (blocked until hardware in hand)
 - Touch input on SPI panel (XPT2046 wired, software TBD)
 - MIDI / OSC control surface
-- Preset workflow inside menu (rename slots, see saved-at, recall from menu)
-- More demoscene effects: voxel terrain, Bayer dither, plasma, tunnel, fire, wireframe gridfloor
+- Look workflow inside menu (rename slots, see saved-at, recall from menu)
+- More demoscene effects (see `EFFECTS-CATALOG.md::Where to look next` — Fire, Tetris rain, NORAD radar, Sandpile/Lenia, dashboard cluster, Lorenz attractor)
