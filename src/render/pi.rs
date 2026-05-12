@@ -72,7 +72,7 @@ impl PiCard {
     }
 }
 
-use gbm::{BufferObjectFlags, Device as GbmDevice, Format as GbmFormat, Surface as GbmSurface};
+use gbm::{AsRaw, BufferObjectFlags, Device as GbmDevice, Format as GbmFormat, Surface as GbmSurface};
 
 pub struct PiContext {
     card: PiCard,
@@ -181,7 +181,9 @@ impl PiContext {
 
         let gl = unsafe {
             glow::Context::from_loader_function_cstr(|s| {
-                egl.get_proc_address(s.to_str().unwrap_or("")) as *const _
+                egl.get_proc_address(s.to_str().unwrap_or(""))
+                    .map(|f| f as *const _)
+                    .unwrap_or(std::ptr::null())
             })
         };
         let gl = Arc::new(gl);

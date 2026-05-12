@@ -2,12 +2,12 @@
 pre-build = [
     "dpkg --add-architecture armhf",
     "apt-get update",
-    "apt-get install --assume-yes --no-install-recommends libdrm-dev:armhf libgbm-dev:armhf libegl-dev:armhf",
+    "apt-get install --assume-yes --no-install-recommends libdrm-dev:armhf libgbm-dev:armhf libegl1-mesa-dev:armhf libasound2-dev:armhf libudev-dev:armhf",
 ]
 
 [target.aarch64-unknown-linux-gnu]
 pre-build = [
     "dpkg --add-architecture arm64",
     "apt-get update",
-    "apt-get install --assume-yes --no-install-recommends libdrm-dev:arm64 libgbm-dev:arm64 libegl-dev:arm64",
+    "apt-get install --assume-yes --no-install-recommends libdrm-dev:arm64 libgbm-dev:arm64 libegl1-mesa-dev:arm64 libasound2-dev:arm64 libudev-dev:arm64",
 ]

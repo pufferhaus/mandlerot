@@ -19,14 +19,18 @@ use embedded_graphics::primitives::Rectangle;
 use mipidsi::models::ILI9486Rgb565;
 use mipidsi::Builder;
 use rppal::gpio::{Gpio, OutputPin};
-use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
+use rppal::spi::{Bus, Mode, SimpleHalSpiDevice, SlaveSelect, Spi};
 
 use crate::error::{Error, Result};
 
 use super::render::Fb;
 
 pub struct PiPanelBackend {
-    display: mipidsi::Display<SPIInterface<Spi, OutputPin>, ILI9486Rgb565, OutputPin>,
+    display: mipidsi::Display<
+        SPIInterface<SimpleHalSpiDevice<Spi>, OutputPin>,
+        ILI9486Rgb565,
+        OutputPin,
+    >,
 }
 
 impl PiPanelBackend {
@@ -49,7 +53,7 @@ impl PiPanelBackend {
         let spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 32_000_000, Mode::Mode0)
             .map_err(|e| Error::Backend(format!("spi open: {e}")))?;
 
-        let di = SPIInterface::new(spi, dc);
+        let di = SPIInterface::new(SimpleHalSpiDevice::new(spi), dc);
         let mut delay = Delay;
         let display = Builder::new(ILI9486Rgb565, di)
             .reset_pin(rst)
