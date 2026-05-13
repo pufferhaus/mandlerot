@@ -35,7 +35,8 @@ smoke-each:
 deploy: build-pi
 	rsync -avz $(RSYNC_SUDO) target/$(PI_TARGET)/release/mandlerot $(SSH_USER)@$(HOST):$(INSTALL_DIR)/
 	rsync -avz $(RSYNC_SUDO) scenes/ $(SSH_USER)@$(HOST):$(INSTALL_DIR)/scenes/
-	rsync -avz $(RSYNC_SUDO) config.toml $(SSH_USER)@$(HOST):$(INSTALL_DIR)/
+	rsync -avz $(RSYNC_SUDO) postfx/ $(SSH_USER)@$(HOST):$(INSTALL_DIR)/postfx/
+	rsync -avz $(RSYNC_SUDO) config.toml keymap.toml $(SSH_USER)@$(HOST):$(INSTALL_DIR)/
 
 deploy-restart: deploy
 	ssh $(SSH_USER)@$(HOST) sudo systemctl restart mandlerot
@@ -45,7 +46,9 @@ logs:
 
 install-pi: build-pi
 	rsync -avz deploy/install.sh $(SSH_USER)@$(HOST):/tmp/mandlerot-install.sh
-	rsync -avz deploy/mandlerot.service deploy/boot-config-additions.txt $(SSH_USER)@$(HOST):/tmp/
+	rsync -avz deploy/mandlerot.service deploy/boot-config-additions.txt \
+	    deploy/logrotate.mandlerot deploy/journald-mandlerot.conf \
+	    $(SSH_USER)@$(HOST):/tmp/
 	ssh $(SSH_USER)@$(HOST) sudo bash /tmp/mandlerot-install.sh
 	$(MAKE) deploy HOST=$(HOST) SSH_USER=$(SSH_USER)
 

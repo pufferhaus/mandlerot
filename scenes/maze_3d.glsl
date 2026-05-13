@@ -13,9 +13,9 @@
 // u_param6  fog_distance (4..20, 11.0)  — visibility fade range
 // u_param7  bg_tint      (0..0.25, .04) — background brightness
 
-#define MAX_STEPS 56
-#define MAX_DIST  22.0
-#define SURF_DIST 0.005
+#define MAX_STEPS 14
+#define MAX_DIST  12.0
+#define SURF_DIST 0.02
 
 float hash2(vec2 v){
     return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
@@ -46,8 +46,8 @@ vec2 mapScene(vec3 p){
 
     vec2 cellId = floor(p.xz / cellSize);
 
-    for (int dx = -1; dx <= 1; dx++){
-        for (int dz = -1; dz <= 1; dz++){
+    for (int dx = -1; dx <= 0; dx++){
+        for (int dz = -1; dz <= 0; dz++){
             vec2 c = cellId + vec2(float(dx), float(dz));
             float h = hash2(c);
             // forge 3-cell-wide z-corridor at camera's x
@@ -84,15 +84,20 @@ vec2 raymarch(vec3 ro, vec3 rd){
     return vec2(t, mat);
 }
 
-vec3 calcNormal(vec3 p){
-    vec2 k = vec2(1.0, -1.0);
-    float h = 0.0015;
-    return normalize(
-        k.xyy * mapScene(p + k.xyy * h).x +
-        k.yyx * mapScene(p + k.yyx * h).x +
-        k.yxy * mapScene(p + k.yxy * h).x +
-        k.xxx * mapScene(p + k.xxx * h).x
-    );
+// Cheap material-based normal: walls are axis-aligned vertical boxes, floor
+// and ceiling are flat. Pick the dominant axis among (p.x, p.y, p.z) to point
+// the wall normal at the camera-facing side. Saves 4 mapScene calls per pixel
+// vs the 4-tap finite-difference normal.
+vec3 fakeNormal(vec3 p, float mat){
+    if (mat > 1.5) return vec3(0.0, -1.0, 0.0);  // ceiling
+    if (mat > 0.5) return vec3(0.0,  1.0, 0.0);  // floor
+    // wall — face the camera-relative xz axis with largest fractional offset
+    // from cell center; rough but visually correct enough for the CRT res.
+    vec2 cellId = floor(p.xz / 2.0);
+    vec2 center = (cellId + 0.5) * 2.0;
+    vec2 rel = p.xz - center;
+    if (abs(rel.x) > abs(rel.y)) return vec3(sign(rel.x), 0.0, 0.0);
+    return vec3(0.0, 0.0, sign(rel.y));
 }
 
 vec3 hue2rgb(float h){
@@ -143,7 +148,7 @@ void main(){
 
     if (d < MAX_DIST){
         vec3 p = ro + rd*d;
-        vec3 n = calcNormal(p);
+        vec3 n = fakeNormal(p, mt);
 
         // basic directional light + ambient
         vec3 ldir = normalize(vec3(0.3, 0.9, -0.2));

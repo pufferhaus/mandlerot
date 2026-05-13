@@ -1,5 +1,6 @@
 name = "bayer"
 display_name = "Bayer Dither"
+internal_resolution = "480x320"
 
 [[params]]
 slot = 0

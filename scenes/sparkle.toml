@@ -5,8 +5,8 @@ display_name = "Sparkle"
 slot = 0
 name = "count"
 min = 16.0
-max = 256.0
-default = 96.0
+max = 96.0
+default = 32.0
 curve = "linear"
 
 [[params]]

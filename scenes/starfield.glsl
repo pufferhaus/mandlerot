@@ -20,7 +20,7 @@ void main() {
 
     vec3 col = vec3(0.0);
 
-    for (int i = 0; i < 200; i++) {
+    for (int i = 0; i < 80; i++) {
         if (i >= count) break;
         float fi = float(i);
 

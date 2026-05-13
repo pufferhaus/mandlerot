@@ -1,5 +1,6 @@
 name = "datamosh"
 display_name = "Datamosh"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

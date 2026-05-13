@@ -18,6 +18,10 @@ pub enum Action {
     ParamMinus,
     /// Param increment on selected slot of active layer.
     ParamPlus,
+    /// Cycle audio route on the selected param of the active layer.
+    /// `dir = +1` → forward (None→Bass→Lomid→Himid→Treble→Beat→None).
+    /// Only meaningful in PARAM mode.
+    ParamAudioCycle { dir: i8 },
     /// Reset all params on active layer to scene defaults.
     ResetAllParams,
     /// Cycle blend mode forward.
@@ -36,6 +40,15 @@ pub enum Action {
     ReloadAllScenes,
     /// Scene cycle next on a layer (dev keys F2/F3).
     SceneCycle { layer: Layer, dir: i8 },
+    /// Scene cycle on whichever layer is currently active. Used by the
+    /// numpad's `Backspace` (dir = +1) and `NumLock` (dir = -1) keys so the
+    /// operator can walk the library without first having to flip layers.
+    SceneCycleActive { dir: i8 },
+    /// Scene cycle on the *other* (inactive) layer. Saves the
+    /// Enter-cycle-Enter dance when the operator wants to set up the next
+    /// layer while still playing the current one. Bound to `000`-modified
+    /// versions of the same two keys.
+    SceneCycleOther { dir: i8 },
     /// Set explicit blend mode (used by look recall).
     SetBlendMode(BlendMode),
     /// Set explicit xfade (used by look recall).

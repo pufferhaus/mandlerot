@@ -1,0 +1,27 @@
+name = "bloom"
+display_name = "Bloom"
+enabled_by_default = false
+
+[[params]]
+slot = 0
+name = "threshold"
+min = 0.0
+max = 1.0
+default = 0.6
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "intensity"
+min = 0.0
+max = 3.0
+default = 1.4
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "radius"
+min = 0.001
+max = 0.05
+default = 0.015
+curve = "linear"

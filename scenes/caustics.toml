@@ -1,5 +1,6 @@
 name = "caustics"
 display_name = "Caustics"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

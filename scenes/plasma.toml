@@ -1,5 +1,6 @@
 name = "plasma"
 display_name = "Plasma"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

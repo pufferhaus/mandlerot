@@ -1,5 +1,6 @@
 name = "hex_rain"
 display_name = "Hex Rain"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

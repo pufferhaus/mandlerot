@@ -1,5 +1,6 @@
 name = "pong"
 display_name = "Pong"
+internal_resolution = "480x320"
 
 [[params]]
 slot = 0

@@ -1,5 +1,6 @@
 name = "transform_rings"
 display_name = "Transform Rings"
+internal_resolution = "220x150"
 
 [[params]]
 slot = 0

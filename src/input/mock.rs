@@ -95,7 +95,7 @@ fn parse_line(s: &str, lineno: usize) -> Result<ScriptedEvent> {
     while let Some(tok) = tokens.next() {
         match tok {
             "shift" => modifier = Modifier::Shift,
-            "numlock" => modifier = Modifier::NumLock,
+            "numpad000" => modifier = Modifier::Numpad000,
             "repeat" => {
                 let n_str = tokens.next().ok_or_else(|| {
                     Error::Backend(format!("line {lineno}: 'repeat' needs count"))

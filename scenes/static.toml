@@ -1,5 +1,6 @@
 name = "static"
 display_name = "Analog Static"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

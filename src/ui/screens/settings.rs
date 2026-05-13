@@ -5,7 +5,7 @@
 //! `enter()`. The screen layout adapts to the entry count automatically.
 
 use crate::status::{Cell, TextScreen, ATTR_BRIGHT, ATTR_DIM, ATTR_INVERSE, ATTR_NORMAL};
-use crate::ui::screens::{AudioSettingsScreen, SlotsScreen};
+use crate::ui::screens::{AudioSettingsScreen, PostFxScreen, SlotsScreen};
 use crate::ui::{RenderCtx, Screen, ScreenCtx, ScreenResult};
 
 #[derive(Clone, Copy)]
@@ -26,6 +26,10 @@ const ENTRIES: &[Entry] = &[
     Entry {
         label: "Slot Mapper",
         hint: "Bind 1..9 keys to scenes",
+    },
+    Entry {
+        label: "Post-FX",
+        hint: "Toggle + tune output passes",
     },
 ];
 
@@ -95,6 +99,7 @@ fn enter(idx: u8) -> ScreenResult {
         0 => ScreenResult::Continue, // Preferences — stub
         1 => ScreenResult::Push(Box::new(AudioSettingsScreen::new())),
         2 => ScreenResult::Push(Box::new(SlotsScreen::new())),
+        3 => ScreenResult::Push(Box::new(PostFxScreen::new())),
         _ => ScreenResult::Continue,
     }
 }
@@ -156,6 +161,7 @@ mod tests {
             bindings,
             state_dir: dir,
             audio,
+            postfx: None,
         }
     }
     fn r_ctx<'a>(
@@ -167,11 +173,12 @@ mod tests {
             scenes,
             bindings,
             audio,
+            postfx: None,
         }
     }
 
     #[test]
-    fn renders_three_entries() {
+    fn renders_four_entries() {
         let s = SettingsScreen::new();
         let mut g = TextScreen::new();
         let b = SlotBindings::default();
@@ -184,6 +191,20 @@ mod tests {
         assert!(row7.starts_with("Audio"));
         let row9: String = (7..18).map(|c| g.at(9, c).ch).collect();
         assert!(row9.starts_with("Slot Mapper"));
+        let row11: String = (7..18).map(|c| g.at(11, c).ch).collect();
+        assert!(row11.starts_with("Post-FX"));
+    }
+
+    #[test]
+    fn pressing_four_pushes_postfx() {
+        let mut s = SettingsScreen::new();
+        let scenes: Vec<String> = vec![];
+        let mut b = SlotBindings::default();
+        let dir = std::path::PathBuf::from("/tmp");
+        let audio = audio_for_test();
+        let r = s.handle_key("4", &mut s_ctx(&scenes, &mut b, &dir, &audio));
+        assert!(matches!(r, ScreenResult::Push(_)));
+        assert_eq!(s.cursor, 3);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 name = "pulse_grid"
 display_name = "Pulse Grid"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

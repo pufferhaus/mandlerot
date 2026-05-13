@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::audio::params::AudioParams;
 use crate::preset::SlotBindings;
+use crate::render::postfx::PostFx;
 use crate::status::TextScreen;
 
 pub mod screens;
@@ -24,6 +25,10 @@ pub struct ScreenCtx<'a> {
     pub bindings: &'a mut SlotBindings,
     pub state_dir: &'a Path,
     pub audio: &'a Arc<AudioParams>,
+    /// Live post-FX chain. Production main loop always sets this. Tests
+    /// that don't exercise post-FX screens pass `None` to avoid having to
+    /// build a GL context just to construct a `PostFx`.
+    pub postfx: Option<&'a mut PostFx>,
 }
 
 /// Read-only context for paint time. Decoupled from `ScreenCtx` so the
@@ -33,6 +38,7 @@ pub struct RenderCtx<'a> {
     pub scenes: &'a [String],
     pub bindings: &'a SlotBindings,
     pub audio: &'a Arc<AudioParams>,
+    pub postfx: Option<&'a PostFx>,
 }
 
 /// Result of a single key delivered to a screen.
@@ -148,6 +154,7 @@ mod tests {
             bindings,
             state_dir: dir,
             audio,
+            postfx: None,
         }
     }
 
@@ -160,6 +167,7 @@ mod tests {
             scenes,
             bindings,
             audio,
+            postfx: None,
         }
     }
 

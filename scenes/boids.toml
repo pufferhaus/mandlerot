@@ -1,5 +1,7 @@
 name = "boids"
 display_name = "Boids"
+internal_resolution = "180x120"
+
 
 [[params]]
 slot = 0

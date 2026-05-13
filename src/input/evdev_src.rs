@@ -11,7 +11,10 @@ pub struct EvdevInput {
     devices: Vec<Device>,
     /// Across all devices: which modifier keys are currently held.
     shift_held: bool,
-    numlock_held: bool,
+    /// "000" key on the cheap USB numpad acts as a held modifier. The
+    /// underlying scancode is `KEY_KPCOMMA` or `KEY_KPPLUSMINUS` depending
+    /// on firmware; both map to `RawKey::Numpad000` for the keymap.
+    numpad000_held: bool,
 }
 
 impl EvdevInput {
@@ -32,6 +35,9 @@ impl EvdevInput {
             match Device::open(&path) {
                 Ok(mut d) => {
                     if d.supported_keys().is_some() {
+                        // Non-blocking fd: fetch_events returns WouldBlock
+                        // instead of stalling the render loop.
+                        let _ = d.set_nonblocking(true);
                         let _ = d.grab(); // best-effort exclusive grab
                         devices.push(d);
                     }
@@ -45,7 +51,7 @@ impl EvdevInput {
         Ok(Self {
             devices,
             shift_held: false,
-            numlock_held: false,
+            numpad000_held: false,
         })
     }
 
@@ -76,7 +82,9 @@ impl EvdevInput {
                     // key release
                     match key {
                         KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => self.shift_held = false,
-                        KeyCode::KEY_NUMLOCK => self.numlock_held = false,
+                        KeyCode::KEY_KPCOMMA | KeyCode::KEY_KPPLUSMINUS => {
+                            self.numpad000_held = false;
+                        }
                         _ => {}
                     }
                     continue;
@@ -87,21 +95,29 @@ impl EvdevInput {
                         self.shift_held = true;
                         continue;
                     }
-                    KeyCode::KEY_NUMLOCK => {
-                        self.numlock_held = true;
+                    KeyCode::KEY_KPCOMMA | KeyCode::KEY_KPPLUSMINUS => {
+                        self.numpad000_held = true;
                         continue;
                     }
                     _ => {}
                 }
                 if let Some(raw) = key_to_raw(key) {
+                    // Shift wins over the pad's `000` modifier if both are
+                    // somehow held. NumLock used to be a third modifier but
+                    // is now a regular key (SceneCycleActive previous).
                     let m = if self.shift_held {
                         Modifier::Shift
-                    } else if self.numlock_held {
-                        Modifier::NumLock
+                    } else if self.numpad000_held {
+                        Modifier::Numpad000
                     } else {
                         Modifier::None
                     };
                     out.push((raw, m));
+                } else {
+                    // Unknown evdev scancode — useful when characterising a
+                    // new HID device. DEBUG level so log spam from a stuck
+                    // key on a misconfigured pad doesn't fill the journal.
+                    tracing::debug!("evdev: unmapped key {:?} (code {})", key, evt.code());
                 }
             }
         }
@@ -137,6 +153,10 @@ fn key_to_raw(k: KeyCode) -> Option<RawKey> {
         KeyCode::KEY_KPASTERISK => "NumpadMultiply".into(),
         KeyCode::KEY_KPSLASH => "NumpadDivide".into(),
         KeyCode::KEY_KPDOT => "NumpadDecimal".into(),
+        // NumLock is no longer treated as a held modifier — on the rotated
+        // cheap pad it sits in the operator's primary-key zone, so it's a
+        // regular key that fires `SceneCycleActive { dir: -1 }`.
+        KeyCode::KEY_NUMLOCK => "NumLock".into(),
         KeyCode::KEY_F1 => "F1".into(),
         KeyCode::KEY_F2 => "F2".into(),
         KeyCode::KEY_F3 => "F3".into(),

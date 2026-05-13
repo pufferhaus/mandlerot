@@ -1,5 +1,6 @@
 name = "spectrum_bars"
 display_name = "Spectrum Bars"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

@@ -1,5 +1,6 @@
 name = "voronoi"
 display_name = "Voronoi"
+internal_resolution = "480x320"
 
 [[params]]
 slot = 0

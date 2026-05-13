@@ -1,0 +1,24 @@
+# mandleROT log rotation. The service appends to
+# /var/lib/mandlerot/log/mandlerot.log (StandardOutput/StandardError in the
+# unit). Without this file mandlerot would grow forever and eventually fill
+# the SD card.
+#
+# - daily + 7 retained = ~1 week history
+# - maxsize 50M forces an extra rotation if a single day spams
+# - copytruncate so the service keeps writing to the same file descriptor
+#   (StandardOutput=append:... keeps the fd open across opens; renaming
+#   would leave it pointing at the old inode)
+# - compress + delaycompress so the most recent rotated copy stays readable
+#   without gunzip
+# - create restores ownership/perms after rotation
+/var/lib/mandlerot/log/*.log {
+    daily
+    rotate 7
+    maxsize 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0644 mandlerot mandlerot
+}

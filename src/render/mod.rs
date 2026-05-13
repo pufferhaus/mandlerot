@@ -1,5 +1,6 @@
 pub mod fbo;
 pub mod pipeline;
+pub mod postfx;
 pub mod quad;
 pub mod shader;
 pub mod target;

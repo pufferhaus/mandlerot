@@ -55,43 +55,84 @@ impl RingBuffer {
 impl CaptureStream {
     pub fn open_default() -> Result<Self> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| Error::Backend("no default audio input device".into()))?;
+        // Optional explicit override by device-name substring.
+        let want_name = std::env::var("MANDLEROT_AUDIO_DEVICE").ok();
+        let device = Self::pick_input_device(&host, want_name.as_deref())?;
+        let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
         let supported = device
             .default_input_config()
             .map_err(|e| Error::Backend(format!("default input config: {e}")))?;
         let sample_format = supported.sample_format();
         let config: StreamConfig = supported.into();
-        tracing::info!(?config, "opening audio capture");
+        tracing::info!(device = %device_name, ?config, "opening audio capture");
 
         let ring = Arc::new(Mutex::new(RingBuffer::new(8192)));
         let ring_for_cb = ring.clone();
         let channels = config.channels as usize;
 
+        // Generic push: optionally down-mix `data` from `channels` interleaved
+        // channels to mono, then write into the ring as f32.
+        fn push_mono_f32(rb: &mut RingBuffer, data: &[f32], channels: usize) {
+            if channels == 1 {
+                rb.push_slice(data);
+            } else {
+                let mut mono = Vec::with_capacity(data.len() / channels);
+                for frame in data.chunks_exact(channels) {
+                    let avg: f32 = frame.iter().sum::<f32>() / channels as f32;
+                    mono.push(avg);
+                }
+                rb.push_slice(&mono);
+            }
+        }
+        fn log_stream_err(err: cpal::StreamError) {
+            tracing::warn!("audio stream error: {err}");
+        }
         let stream = match sample_format {
-            SampleFormat::F32 => device.build_input_stream(
-                &config,
-                move |data: &[f32], _info: &cpal::InputCallbackInfo| {
-                    let mut rb = ring_for_cb.lock().unwrap();
-                    if channels == 1 {
-                        rb.push_slice(data);
-                    } else {
-                        // Down-mix to mono.
-                        let mut mono = Vec::with_capacity(data.len() / channels);
-                        for frame in data.chunks_exact(channels) {
-                            let avg: f32 = frame.iter().sum::<f32>() / channels as f32;
-                            mono.push(avg);
-                        }
-                        rb.push_slice(&mono);
-                    }
-                },
-                |err| tracing::warn!("audio stream error: {err}"),
-                None,
-            ),
+            SampleFormat::F32 => {
+                let ring_cb = ring_for_cb.clone();
+                device.build_input_stream(
+                    &config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let mut rb = ring_cb.lock().unwrap();
+                        push_mono_f32(&mut rb, data, channels);
+                    },
+                    log_stream_err,
+                    None,
+                )
+            }
+            SampleFormat::I16 => {
+                let ring_cb = ring_for_cb.clone();
+                device.build_input_stream(
+                    &config,
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        let mut rb = ring_cb.lock().unwrap();
+                        let f: Vec<f32> =
+                            data.iter().map(|s| *s as f32 / 32768.0).collect();
+                        push_mono_f32(&mut rb, &f, channels);
+                    },
+                    log_stream_err,
+                    None,
+                )
+            }
+            SampleFormat::U16 => {
+                let ring_cb = ring_for_cb.clone();
+                device.build_input_stream(
+                    &config,
+                    move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                        let mut rb = ring_cb.lock().unwrap();
+                        let f: Vec<f32> = data
+                            .iter()
+                            .map(|s| (*s as f32 - 32768.0) / 32768.0)
+                            .collect();
+                        push_mono_f32(&mut rb, &f, channels);
+                    },
+                    log_stream_err,
+                    None,
+                )
+            }
             other => {
                 return Err(Error::Backend(format!(
-                    "unsupported sample format: {other:?} — only F32 is wired"
+                    "unsupported sample format: {other:?} (F32/I16/U16 supported)"
                 )));
             }
         }
@@ -105,6 +146,53 @@ impl CaptureStream {
             _stream: stream,
             ring,
         })
+    }
+
+    /// Pick an input device. Order:
+    ///   1. If `want_substr` set, first device whose name contains it.
+    ///   2. Default input device that successfully reports a config.
+    ///   3. First enumerated input device that reports a config.
+    /// Logs the full input device list so misbehaving setups are diagnosable.
+    fn pick_input_device(host: &cpal::Host, want_substr: Option<&str>) -> Result<cpal::Device> {
+        let devices: Vec<cpal::Device> = host
+            .input_devices()
+            .map(|it| it.collect())
+            .unwrap_or_default();
+        let names: Vec<String> = devices
+            .iter()
+            .map(|d| d.name().unwrap_or_else(|_| "<unknown>".into()))
+            .collect();
+        tracing::info!(inputs = ?names, "audio input devices");
+
+        if let Some(want) = want_substr {
+            for d in &devices {
+                let n = d.name().unwrap_or_default();
+                if n.to_lowercase().contains(&want.to_lowercase()) {
+                    tracing::info!(picked = %n, by = "MANDLEROT_AUDIO_DEVICE", "audio device");
+                    return Ok(d.clone());
+                }
+            }
+            tracing::warn!(want, "MANDLEROT_AUDIO_DEVICE not matched; falling back");
+        }
+
+        if let Some(d) = host.default_input_device() {
+            if d.default_input_config().is_ok() {
+                let n = d.name().unwrap_or_default();
+                tracing::info!(picked = %n, by = "default", "audio device");
+                return Ok(d);
+            }
+            tracing::warn!("default input device has no usable config; trying enumeration");
+        }
+
+        for d in devices {
+            if d.default_input_config().is_ok() {
+                let n = d.name().unwrap_or_default();
+                tracing::info!(picked = %n, by = "enumeration", "audio device");
+                return Ok(d);
+            }
+        }
+
+        Err(Error::Backend("no usable audio input device".into()))
     }
 }
 

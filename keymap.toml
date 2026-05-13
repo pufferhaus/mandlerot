@@ -18,13 +18,26 @@
 key = "Tab"
 action = "AdvanceMode"
 
-[[binding]]
-key = "Backspace"
-action = "Panic"
-
+# Esc is the primary keyboard Panic. Backspace is repurposed below as
+# SceneCycleActive next; a double-tap of either Backspace OR Esc still
+# fires Panic via the global double-tap watcher in `main.rs` (the
+# unconditional escape hatch survives menu open). Numpad operators have
+# the `-` + `+` + `Enter` chord as their emergency route.
 [[binding]]
 key = "Esc"
 action = "Panic"
+
+# Scene cycle on whichever layer is currently active. On the rotated cheap
+# pad these two keys sit in the operator's primary-key zone:
+#   Backspace = next scene
+#   NumLock   = previous scene
+# Flip layers first (Enter / Backslash) if you want to cycle the other side.
+[[binding]]
+key = "Backspace"
+action = "SceneCycle:active:1"
+[[binding]]
+key = "NumLock"
+action = "SceneCycle:active:-1"
 
 [[binding]]
 key = "Backslash"
@@ -63,34 +76,43 @@ action = "Slot:8"
 key = "9"
 action = "Slot:9"
 
-# Numpad slot keys (NumLk OFF on cheap pads sends digits)
+# Numpad slot keys — the cheap pad we use lives rotated 90° CCW on the rig,
+# so we remap the digits so the 3x3 block reads naturally (1 top-left,
+# ascending L→R, T→B) from the operator's POV. Physical key → assigned slot:
+#
+#   physical 9 → Slot 1       physical 6 → Slot 2     physical 3 → Slot 3
+#   physical 8 → Slot 4       physical 5 → Slot 5     physical 2 → Slot 6
+#   physical 7 → Slot 7       physical 4 → Slot 8     physical 1 → Slot 9
+#
+# (Centre stays Slot 5, corners diagonal stays put.) The keyboard's number
+# row above is unaffected — those bindings remain identity 1→1, 2→2, etc.
 [[binding]]
 key = "Numpad1"
-action = "Slot:1"
+action = "Slot:9"
 [[binding]]
 key = "Numpad2"
-action = "Slot:2"
+action = "Slot:6"
 [[binding]]
 key = "Numpad3"
 action = "Slot:3"
 [[binding]]
 key = "Numpad4"
-action = "Slot:4"
+action = "Slot:8"
 [[binding]]
 key = "Numpad5"
 action = "Slot:5"
 [[binding]]
 key = "Numpad6"
-action = "Slot:6"
+action = "Slot:2"
 [[binding]]
 key = "Numpad7"
 action = "Slot:7"
 [[binding]]
 key = "Numpad8"
-action = "Slot:8"
+action = "Slot:4"
 [[binding]]
 key = "Numpad9"
-action = "Slot:9"
+action = "Slot:1"
 
 # Crossfade / param ± (keyboard)
 # "Equal" and "Minus" are mode-aware: param step in PARAM mode, xfade elsewhere.
@@ -107,6 +129,25 @@ action = "ParamPlus"
 [[binding]]
 key = "="
 action = "ParamPlus"
+
+# Shift+-/= in PARAM mode cycles the selected param's audio band route
+# (None→Bass→Lomid→Himid→Treble→Beat→None). No-op outside PARAM mode.
+[[binding]]
+key = "Minus"
+modifier = "Shift"
+action = "ParamAudioMinus"
+[[binding]]
+key = "-"
+modifier = "Shift"
+action = "ParamAudioMinus"
+[[binding]]
+key = "Equal"
+modifier = "Shift"
+action = "ParamAudioPlus"
+[[binding]]
+key = "="
+modifier = "Shift"
+action = "ParamAudioPlus"
 [[binding]]
 key = "BracketLeft"
 action = "XfadeMinus"
@@ -150,9 +191,53 @@ action = "TapTempo"
 [[binding]]
 key = "G"
 action = "AudioBypass"
+# NumpadDecimal (the "." key on the cheap pad) is now AdvanceMode — the
+# most-pressed bottom-row primary. AudioBypass moves to a 000-held combo
+# below since it's not in the hot-path of a set.
 [[binding]]
 key = "NumpadDecimal"
+action = "AdvanceMode"
+
+# Numpad-only operator coverage. `000` on the cheap pad is the held-modifier
+# of choice — NumLock-on-the-LED-can-flip-firmware-remap concerns made it
+# fragile, so the modifier moved off NumLock. The "000" key sends one of
+# KEY_KPCOMMA / KEY_KPPLUSMINUS depending on firmware; both map to the
+# synthetic `Numpad000` raw key in `src/input/evdev_src.rs`.
+[[binding]]
+key = "NumpadEnter"
+modifier = "Numpad000"
 action = "AudioBypass"
+[[binding]]
+key = "Numpad0"
+modifier = "Numpad000"
+action = "FreezeToggle"
+[[binding]]
+key = "NumpadDecimal"
+modifier = "Numpad000"
+action = "OpenMenu:Settings"
+
+# `000`-held scene cycle on the OTHER layer (mirror of the unmodified
+# Backspace / NumLock SceneCycleActive bindings). Lets the operator
+# pre-select the next-up scene on the inactive layer without first toggling
+# active.
+[[binding]]
+key = "Backspace"
+modifier = "Numpad000"
+action = "SceneCycle:other:1"
+[[binding]]
+key = "NumLock"
+modifier = "Numpad000"
+action = "SceneCycle:other:-1"
+
+# `000+5` (centre digit, hard to hit by accident) resets every param on the
+# active layer to scene defaults. Useful in PARAM mode when a slot has
+# drifted. Trade-off: this overrides the implicit "Slot 5 on the other
+# layer" template, so the keyboard `Shift+5` (or the Enter-5-Enter dance)
+# is the only path to slot 5 on the inactive layer from the numpad.
+[[binding]]
+key = "Numpad5"
+modifier = "Numpad000"
+action = "ResetAllParams"
 
 # Dev F-keys (active only in dev builds; safe to include — non-dev builds
 # ignore Action::ReloadAllScenes / SceneCycle dispatch when feature is off)

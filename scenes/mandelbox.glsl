@@ -26,7 +26,7 @@ void sphereFold(inout vec3 p, inout float dr, float minR, float fixR){
 float DE(vec3 p, float scale, float minR, float fixR, int iters){
     vec3 offset = p;
     float dr = 1.0;
-    for (int n = 0; n < 12; n++){
+    for (int n = 0; n < 8; n++){
         if (n >= iters) break;
         boxFold(p);
         sphereFold(p, dr, minR, fixR);
@@ -61,11 +61,11 @@ void main(){
     float t = 0.0;
     float hit = 0.0;
     float escape = 0.0;
-    for (int j = 0; j < 96; j++){
+    for (int j = 0; j < 32; j++){
         if (j >= steps) break;
         vec3 p = ro + rd * t;
         float d = DE(p, scale, minR, fixR, iters);
-        if (d < 0.001){ hit = 1.0; escape = float(j) / float(steps); break; }
+        if (d < 0.003){ hit = 1.0; escape = float(j) / float(steps); break; }
         if (t > 12.0) break;
         t += max(d, 0.001);
     }

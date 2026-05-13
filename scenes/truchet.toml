@@ -1,5 +1,6 @@
 name = "truchet"
 display_name = "Truchet"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

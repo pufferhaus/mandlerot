@@ -5,8 +5,8 @@ display_name = "Starfield"
 slot = 0
 name = "density"
 min = 10.0
-max = 200.0
-default = 60.0
+max = 80.0
+default = 36.0
 curve = "linear"
 
 [[params]]

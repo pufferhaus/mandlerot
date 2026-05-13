@@ -1,5 +1,6 @@
 name = "cube_wireframe"
 display_name = "Cube Wireframe"
+internal_resolution = "280x190"
 
 [[params]]
 slot = 0

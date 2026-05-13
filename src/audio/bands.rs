@@ -13,6 +13,12 @@ pub struct BandRanges {
     pub lomid: (usize, usize),
     pub himid: (usize, usize),
     pub treble: (usize, usize),
+    /// Centre-mids: overlaps lomid + himid, isolating the perceptual band
+    /// where vocals + lead instruments live (≈500–2000 Hz). Bound to its
+    /// own `u_audio_mid` shader uniform — keeping the legacy `u_audio.xyzw`
+    /// mapping for [bass, lomid, himid, treble] intact so existing scenes
+    /// keep working unmodified.
+    pub mid: (usize, usize),
 }
 
 impl BandRanges {
@@ -24,9 +30,18 @@ impl BandRanges {
             lomid: (bin_for(200.0), bin_for(800.0)),
             himid: (bin_for(800.0), bin_for(3200.0)),
             treble: (bin_for(3200.0), bin_for(20000.0).min(FFT_SIZE / 2 - 1)),
+            mid: (bin_for(500.0), bin_for(2000.0)),
         }
     }
 }
+
+/// Number of frequency bands tracked end-to-end. Index layout is
+/// `[bass, lomid, himid, treble, mid]`; the legacy four come first so
+/// that `audio_bands.xyzw` still maps to the same channels everywhere
+/// (state, snapshot, `u_audio` uniform). Mid lives at index 4 and is
+/// exposed via the standalone `u_audio_mid` scalar uniform.
+pub const BAND_COUNT: usize = 5;
+pub const BAND_MID: usize = 4;
 
 pub struct BandBinner {
     fft: Arc<dyn rustfft::Fft<f32>>,
@@ -46,9 +61,10 @@ impl BandBinner {
         }
     }
 
-    /// Returns 4 normalized band magnitudes (mean log magnitude per band).
+    /// Returns 5 normalised band magnitudes (mean log magnitude per band).
+    /// Layout: `[bass, lomid, himid, treble, mid]` — see `BAND_*` consts.
     /// Magnitudes are NOT normalized to [0,1] — that's the envelope follower's job.
-    pub fn process(&self, samples: &[f32; FFT_SIZE]) -> [f32; 4] {
+    pub fn process(&self, samples: &[f32; FFT_SIZE]) -> [f32; BAND_COUNT] {
         let (bands, _mags) = self.process_with_mags(samples);
         bands
     }
@@ -56,8 +72,8 @@ impl BandBinner {
     /// Same as `process` but also returns the linear FFT magnitudes (one per
     /// bin in the lower half of the spectrum). Useful for downstream
     /// consumers like the spectral-flux beat detector that need raw
-    /// per-bin magnitudes rather than the 4-band reduction.
-    pub fn process_with_mags(&self, samples: &[f32; FFT_SIZE]) -> ([f32; 4], Vec<f32>) {
+    /// per-bin magnitudes rather than the 5-band reduction.
+    pub fn process_with_mags(&self, samples: &[f32; FFT_SIZE]) -> ([f32; BAND_COUNT], Vec<f32>) {
         let mut buf: Vec<Complex32> = samples
             .iter()
             .zip(&self.window)
@@ -73,7 +89,8 @@ impl BandBinner {
         let lomid = mean_log_mag(&mags, self.ranges.lomid);
         let himid = mean_log_mag(&mags, self.ranges.himid);
         let treble = mean_log_mag(&mags, self.ranges.treble);
-        ([bass, lomid, himid, treble], mags)
+        let mid = mean_log_mag(&mags, self.ranges.mid);
+        ([bass, lomid, himid, treble, mid], mags)
     }
 }
 

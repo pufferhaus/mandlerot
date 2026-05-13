@@ -21,6 +21,7 @@ pub struct AudioParams {
     gain_lomid: AtomicU32,
     gain_himid: AtomicU32,
     gain_treble: AtomicU32,
+    gain_mid: AtomicU32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +36,10 @@ struct AudioParamsFile {
     gain_himid: f32,
     #[serde(default = "default_gain")]
     gain_treble: f32,
+    /// Centre-mid band. `#[serde(default)]` lets older audio.toml files
+    /// (pre-5-band) load cleanly with the default 1.0 gain.
+    #[serde(default = "default_gain")]
+    gain_mid: f32,
 }
 
 pub const DEFAULT_NOISE_FLOOR: f32 = 8.0;
@@ -55,6 +60,7 @@ impl Default for AudioParamsFile {
             gain_lomid: DEFAULT_GAIN,
             gain_himid: DEFAULT_GAIN,
             gain_treble: DEFAULT_GAIN,
+            gain_mid: DEFAULT_GAIN,
         }
     }
 }
@@ -71,6 +77,7 @@ impl AudioParams {
             gain_lomid: AtomicU32::new(f.gain_lomid.to_bits()),
             gain_himid: AtomicU32::new(f.gain_himid.to_bits()),
             gain_treble: AtomicU32::new(f.gain_treble.to_bits()),
+            gain_mid: AtomicU32::new(f.gain_mid.to_bits()),
         })
     }
 
@@ -101,6 +108,7 @@ impl AudioParams {
             gain_lomid: self.gain(1),
             gain_himid: self.gain(2),
             gain_treble: self.gain(3),
+            gain_mid: self.gain(4),
         };
         let body =
             toml::to_string_pretty(&f).map_err(|e| Error::Backend(format!("serialize: {e}")))?;
@@ -121,12 +129,15 @@ impl AudioParams {
         self.noise_floor.store(v.to_bits(), Ordering::Relaxed);
     }
 
-    /// `band` indexes 0=bass, 1=lomid, 2=himid, 3=treble.
+    /// `band` indexes 0=bass, 1=lomid, 2=himid, 3=treble, 4=mid. Out-of-
+    /// range indexes fall back to treble for legacy callers.
     pub fn gain(&self, band: usize) -> f32 {
         let a = match band {
             0 => &self.gain_bass,
             1 => &self.gain_lomid,
             2 => &self.gain_himid,
+            3 => &self.gain_treble,
+            4 => &self.gain_mid,
             _ => &self.gain_treble,
         };
         f32::from_bits(a.load(Ordering::Relaxed))
@@ -137,6 +148,8 @@ impl AudioParams {
             0 => &self.gain_bass,
             1 => &self.gain_lomid,
             2 => &self.gain_himid,
+            3 => &self.gain_treble,
+            4 => &self.gain_mid,
             _ => &self.gain_treble,
         };
         a.store(v.to_bits(), Ordering::Relaxed);
@@ -151,7 +164,7 @@ mod tests {
     fn default_values_are_sane() {
         let p = AudioParams::new();
         assert_eq!(p.noise_floor(), DEFAULT_NOISE_FLOOR);
-        for b in 0..4 {
+        for b in 0..5 {
             assert_eq!(p.gain(b), DEFAULT_GAIN);
         }
     }

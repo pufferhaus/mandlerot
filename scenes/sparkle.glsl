@@ -25,7 +25,7 @@ void main() {
 
     float n = max(u_param0, 4.0);
     float life = max(u_param1, 0.1);
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 96; i++) {
         if (float(i) >= n) break;
         float fi = float(i);
         // each sparkle's phase is offset so spawns are spread out

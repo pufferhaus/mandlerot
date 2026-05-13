@@ -1,5 +1,6 @@
 name = "donut"
 display_name = "ASCII Donut"
+internal_resolution = "480x320"
 
 [[params]]
 slot = 0

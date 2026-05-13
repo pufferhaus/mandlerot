@@ -56,11 +56,12 @@ impl PiCard {
             let info = self
                 .get_connector(*handle, false)
                 .map_err(|e| Error::Backend(format!("connector: {e}")))?;
-            if info.state() != connector::State::Connected {
+            // Composite/TV/SVideo are analog with no hot-plug detect, so the
+            // KMS state is always "Unknown" — accept that as good. Reject
+            // explicit Disconnected.
+            if info.state() == connector::State::Disconnected {
                 continue;
             }
-            // The vc4 driver names the composite output "Composite-1" or
-            // similar. Match by interface enum.
             use connector::Interface::*;
             if matches!(info.interface(), Composite | TV | SVideo) {
                 return Ok(info);
@@ -76,10 +77,13 @@ use gbm::{AsRaw, BufferObjectFlags, Device as GbmDevice, Format as GbmFormat, Su
 
 pub struct PiContext {
     card: PiCard,
+    // RAII: must outlive surface/egl below; dropping closes the gbm+EGL handles.
+    #[allow(dead_code)]
     gbm: GbmDevice<PiCard>,
     surface: GbmSurface<()>,
     egl: khronos_egl::DynamicInstance<khronos_egl::EGL1_5>,
     egl_display: khronos_egl::Display,
+    #[allow(dead_code)]
     egl_context: khronos_egl::Context,
     egl_surface: khronos_egl::Surface,
     crtc_handle: drm::control::crtc::Handle,
@@ -277,27 +281,33 @@ impl PiTarget {
             .map_err(|e| Error::Backend(format!("add_planar_framebuffer: {e}")))
     }
 
-    /// Block until the kernel reports a `PageFlip` event for our crtc, then
-    /// the previously-`scanning` buffer/FB is safe to release.
-    fn wait_for_flip(&mut self) -> Result<()> {
-        loop {
-            let events = self
-                .ctx
-                .card
-                .receive_events()
-                .map_err(|e| Error::Backend(format!("receive_events: {e}")))?;
-            for event in events {
-                if let drm::control::Event::PageFlip(pf) = event {
-                    if pf.crtc == self.ctx.crtc_handle {
-                        // Old `scanning` is no longer being scanned out.
-                        if let Some((old_fb, _bo)) = self.scanning.take() {
-                            let _ = self.ctx.card.destroy_framebuffer(old_fb);
-                        }
-                        // Promote pending → scanning.
-                        if let Some(pending) = self.pending.take() {
-                            self.scanning = Some(pending);
-                        }
-                        return Ok(());
+    /// Non-blocking drain of any pending flip-completion events. Uses
+    /// poll(2) with a zero timeout so we never block on absent vblanks
+    /// (e.g. composite with no TV attached).
+    fn drain_flip_events(&mut self) {
+        use std::os::fd::AsRawFd;
+        let fd = self.ctx.card.as_fd().as_raw_fd();
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: pfd is a valid pollfd with a valid fd; timeout=0 = non-blocking.
+        let n = unsafe { libc::poll(&mut pfd, 1, 0) };
+        if n <= 0 {
+            return;
+        }
+        let Ok(events) = self.ctx.card.receive_events() else {
+            return;
+        };
+        for event in events {
+            if let drm::control::Event::PageFlip(pf) = event {
+                if pf.crtc == self.ctx.crtc_handle {
+                    if let Some((old_fb, _bo)) = self.scanning.take() {
+                        let _ = self.ctx.card.destroy_framebuffer(old_fb);
+                    }
+                    if let Some(pending) = self.pending.take() {
+                        self.scanning = Some(pending);
                     }
                 }
             }
@@ -329,42 +339,41 @@ impl super::target::RenderTarget for PiTarget {
         };
         let fb = self.add_fb_for_bo(&bo)?;
 
-        if !self.first_flip_done {
-            // First frame: full mode-set. After this returns the buffer is
-            // already scanning out, so move it directly to `scanning`.
-            self.ctx
-                .card
-                .set_crtc(
-                    self.ctx.crtc_handle,
-                    Some(fb),
-                    (0, 0),
-                    &[self.ctx.connector_handle],
-                    Some(self.ctx.mode),
-                )
-                .map_err(|e| Error::Backend(format!("set_crtc: {e}")))?;
-            self.scanning = Some((fb, bo));
-            self.first_flip_done = true;
-            return Ok(());
-        }
-
-        // If a previous page-flip is still pending, we must wait for its
-        // completion event before queueing another (kernel only allows one
-        // pending flip per crtc).
-        // FIXME(plan-3-deploy): verify this single-pending invariant on hardware.
-        if self.pending.is_some() {
-            self.wait_for_flip()?;
-        }
-
+        // Every frame is a synchronous mode-set. The original implementation
+        // used `page_flip(.., EVENT)` with non-blocking event drain, but on
+        // the Pi 3B+ VEC composite encoder the pageflip events fired
+        // unreliably — eventually we'd `destroy_framebuffer` on the fb the
+        // kernel still had attached to the primary plane, the plane would
+        // get detached (`crtc=null` in `/sys/kernel/debug/dri/0/state`),
+        // and TV output silently went black even though the app kept
+        // rendering at 30 fps. `set_crtc` blocks until the next vblank and
+        // the kernel handles plane attach/detach atomically, so the old
+        // fb is guaranteed to be off the plane by the time we destroy it
+        // below. Composite is interlaced 30 fps, so the per-frame block
+        // costs us nothing the display can show.
         self.ctx
             .card
-            .page_flip(
+            .set_crtc(
                 self.ctx.crtc_handle,
-                fb,
-                drm::control::PageFlipFlags::EVENT,
-                None,
+                Some(fb),
+                (0, 0),
+                &[self.ctx.connector_handle],
+                Some(self.ctx.mode),
             )
-            .map_err(|e| Error::Backend(format!("page_flip: {e}")))?;
-        self.pending = Some((fb, bo));
+            .map_err(|e| Error::Backend(format!("set_crtc: {e}")))?;
+
+        // After set_crtc returns the new fb is the active scanout. The
+        // previously-scanning fb is no longer attached to the plane, so we
+        // can free it. The `pending` slot is unused on this code path but
+        // we drain it too in case a prior implementation left something
+        // behind across a hot-reload.
+        if let Some((old_fb, _bo)) = self.scanning.replace((fb, bo)) {
+            let _ = self.ctx.card.destroy_framebuffer(old_fb);
+        }
+        if let Some((stale_fb, _bo)) = self.pending.take() {
+            let _ = self.ctx.card.destroy_framebuffer(stale_fb);
+        }
+        self.first_flip_done = true;
         Ok(())
     }
 
@@ -376,11 +385,8 @@ impl super::target::RenderTarget for PiTarget {
 
 impl Drop for PiTarget {
     fn drop(&mut self) {
-        // Best-effort: drain any pending flip event so we don't destroy
-        // a buffer the kernel is still scanning out.
-        if self.pending.is_some() {
-            let _ = self.wait_for_flip();
-        }
+        // Best-effort: drain any completed flip events without blocking.
+        self.drain_flip_events();
         if let Some((fb, _)) = self.scanning.take() {
             let _ = self.ctx.card.destroy_framebuffer(fb);
         }

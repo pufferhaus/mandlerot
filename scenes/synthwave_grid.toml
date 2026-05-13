@@ -1,5 +1,6 @@
 name = "synthwave_grid"
 display_name = "Synthwave Grid"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

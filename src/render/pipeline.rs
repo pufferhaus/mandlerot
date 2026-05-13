@@ -11,8 +11,33 @@ use crate::scene::{LoadedScene, ParamMap};
 use crate::state::SharedState;
 
 use super::fbo::Fbo;
+use super::postfx::PostFx;
 use super::quad::{QUAD_POSITIONS, VERTEX_COUNT};
 use super::shader::{assemble_scene_fragment, BLEND_FRAG, QUAD_VERT};
+
+/// Cached uniform locations for one scene program. Resolving each location
+/// at link time and storing the handle drops the per-frame
+/// `format!("u_param{i}") → get_uniform_location` round-trip down to a
+/// single array index. Locations that don't appear in the shader become
+/// `None` and writes to them are no-ops.
+pub struct SceneProgram {
+    pub program: glow::Program,
+    u_time: Option<glow::UniformLocation>,
+    u_resolution: Option<glow::UniformLocation>,
+    u_audio: Option<glow::UniformLocation>,
+    u_audio_mid: Option<glow::UniformLocation>,
+    u_beat: Option<glow::UniformLocation>,
+    u_trigger: Option<glow::UniformLocation>,
+    u_bpm: Option<glow::UniformLocation>,
+    u_params: [Option<glow::UniformLocation>; 9],
+}
+
+/// Cached uniform locations for the single blend program.
+pub struct BlendProgram {
+    pub program: glow::Program,
+    u_xfade: Option<glow::UniformLocation>,
+    u_blend_mode: Option<glow::UniformLocation>,
+}
 
 pub struct Pipeline {
     gl: Arc<glow::Context>,
@@ -24,15 +49,23 @@ pub struct Pipeline {
     fbo_b: [Fbo; 2],
     front_a: usize,
     front_b: usize,
-    blend_program: glow::Program,
+    blend: BlendProgram,
     quad_vao: glow::VertexArray,
-    /// scene name → compiled program
-    scene_programs: BTreeMap<String, glow::Program>,
+    /// scene name → compiled program (with cached uniform locations)
+    scene_programs: BTreeMap<String, SceneProgram>,
+    /// scene name → preferred layer FBO size, parsed from
+    /// `internal_resolution` in the scene's toml. Absent = use `width × height`.
+    scene_sizes: BTreeMap<String, (u32, u32)>,
     overlay_program: Option<glow::Program>,
     /// 1×320 RGBA8 texture mirroring `AudioHistory::snapshot_rgba`. Created
     /// up-front (zeros) so binding is always valid; main loop refreshes
     /// content each frame via `upload_audio_history`.
     audio_history_texture: Option<glow::Texture>,
+    /// Post-FX chain. Empty by default; populated via `postfx_load_dir`.
+    /// When any pass in the chain is enabled, the blend output is rerouted
+    /// into the chain's input FBO and the last enabled pass writes to the
+    /// swapchain.
+    pub postfx: PostFx,
 }
 
 impl Pipeline {
@@ -46,8 +79,23 @@ impl Pipeline {
             Fbo::new(gl.clone(), width, height)?,
         ];
         let blend_program = compile_program(&gl, QUAD_VERT, BLEND_FRAG)?;
+        let blend = resolve_blend_uniforms(&gl, blend_program);
         let quad_vao = create_quad_vao(&gl)?;
         let audio_history_texture = create_audio_history_texture(&gl);
+        let postfx = PostFx::new(gl.clone(), width, height)?;
+        // One-time GL state setup that holds for the lifetime of the
+        // process: bind the unit-2 audio history texture so it's always
+        // there for scenes to sample, and bind the quad VAO once since
+        // every draw in this pipeline uses the same single quad. Skipping
+        // these per-frame saves ~6 GL calls each render tick.
+        unsafe {
+            if let Some(tex) = audio_history_texture {
+                gl.active_texture(glow::TEXTURE2);
+                gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                gl.active_texture(glow::TEXTURE0);
+            }
+            gl.bind_vertex_array(Some(quad_vao));
+        }
         Ok(Self {
             gl,
             width,
@@ -56,12 +104,21 @@ impl Pipeline {
             fbo_b,
             front_a: 0,
             front_b: 0,
-            blend_program,
+            blend,
             quad_vao,
             scene_programs: BTreeMap::new(),
+            scene_sizes: BTreeMap::new(),
             overlay_program: None,
             audio_history_texture,
+            postfx,
         })
+    }
+
+    /// Load every paired `<dir>/*.{glsl,toml}` as a post-FX pass. Safe to call
+    /// at startup before any frames render; failures on individual passes are
+    /// logged and skipped so a single broken shader doesn't kill the chain.
+    pub fn postfx_load_dir(&mut self, dir: &std::path::Path) -> Result<()> {
+        self.postfx.load_dir(dir)
     }
 
     /// Refresh the audio-history texture from a packed RGBA8 snapshot.
@@ -69,15 +126,20 @@ impl Pipeline {
     /// are silently skipped (test paths may pass empty buffers). Calls into
     /// `tex_sub_image_2d`; the texture itself is created once in `new()`.
     pub fn upload_audio_history(&mut self, rgba: &[u8]) {
-        let Some(tex) = self.audio_history_texture else {
+        if self.audio_history_texture.is_none() {
             return;
-        };
+        }
         if rgba.len() != AUDIO_HISTORY_LEN * 4 {
             return;
         }
         unsafe {
+            // Texture is permanently bound to TEXTURE2 (set in `Pipeline::new`)
+            // so we don't need an extra `bind_texture` here. The active
+            // unit *might* be 0 after a render pass, so we flip to 2 to
+            // target the right texture before `tex_sub_image_2d`, then
+            // restore TEXTURE0 so subsequent code doesn't bind unrelated
+            // textures into unit 2 by accident.
             self.gl.active_texture(glow::TEXTURE2);
-            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
             self.gl.tex_sub_image_2d(
                 glow::TEXTURE_2D,
                 0,
@@ -89,8 +151,6 @@ impl Pipeline {
                 glow::UNSIGNED_BYTE,
                 glow::PixelUnpackData::Slice(rgba),
             );
-            // Restore TEXTURE0 as the default active unit so nothing else
-            // gets confused; scene render will re-`active_texture` anyway.
             self.gl.active_texture(glow::TEXTURE0);
         }
     }
@@ -109,9 +169,68 @@ impl Pipeline {
     pub fn upsert_scene(&mut self, name: &str, scene: &LoadedScene) -> Result<()> {
         let frag = assemble_scene_fragment(&scene.fragment_body);
         let new_prog = compile_program(&self.gl, QUAD_VERT, &frag)?;
-        if let Some(old) = self.scene_programs.insert(name.to_string(), new_prog) {
-            unsafe { self.gl.delete_program(old) };
+        let cached = resolve_scene_uniforms(&self.gl, new_prog);
+        // Sampler bindings never change at runtime — set them once here and
+        // never re-upload. `u_prev` reads from TEXTURE0 (the per-layer prev
+        // FBO bound at render time); `u_audio_history` reads from TEXTURE2
+        // (bound permanently in `Pipeline::new`).
+        unsafe {
+            self.gl.use_program(Some(new_prog));
+            let loc_prev = self.gl.get_uniform_location(new_prog, "u_prev");
+            if loc_prev.is_some() {
+                self.gl.uniform_1_i32(loc_prev.as_ref(), 0);
+            }
+            let loc_aud = self.gl.get_uniform_location(new_prog, "u_audio_history");
+            if loc_aud.is_some() {
+                self.gl.uniform_1_i32(loc_aud.as_ref(), 2);
+            }
         }
+        if let Some(old) = self.scene_programs.insert(name.to_string(), cached) {
+            unsafe { self.gl.delete_program(old.program) };
+        }
+        match scene.meta.internal_resolution_size() {
+            Some(size) => {
+                self.scene_sizes.insert(name.to_string(), size);
+            }
+            None => {
+                self.scene_sizes.remove(name);
+            }
+        }
+        Ok(())
+    }
+
+    /// Layer FBO size to use when rendering `scene_name`. Per-scene override
+    /// wins; otherwise the global pipeline render-scale size applies.
+    fn layer_size_for(&self, scene_name: &str) -> (u32, u32) {
+        self.scene_sizes
+            .get(scene_name)
+            .copied()
+            .unwrap_or((self.width, self.height))
+    }
+
+    /// Recreate `fbo_a`'s ping-pong pair at `(w, h)` if they currently differ.
+    /// Resets `front_a` since the new FBOs are fresh (cleared to opaque black).
+    fn ensure_layer_a_size(&mut self, w: u32, h: u32) -> Result<()> {
+        if self.fbo_a[0].width == w && self.fbo_a[0].height == h {
+            return Ok(());
+        }
+        self.fbo_a = [
+            Fbo::new(self.gl.clone(), w, h)?,
+            Fbo::new(self.gl.clone(), w, h)?,
+        ];
+        self.front_a = 0;
+        Ok(())
+    }
+
+    fn ensure_layer_b_size(&mut self, w: u32, h: u32) -> Result<()> {
+        if self.fbo_b[0].width == w && self.fbo_b[0].height == h {
+            return Ok(());
+        }
+        self.fbo_b = [
+            Fbo::new(self.gl.clone(), w, h)?,
+            Fbo::new(self.gl.clone(), w, h)?,
+        ];
+        self.front_b = 0;
         Ok(())
     }
 
@@ -127,7 +246,7 @@ impl Pipeline {
         params: &ParamMap,
         state: &SharedState,
     ) -> Result<()> {
-        let prog = self
+        let sp = self
             .scene_programs
             .get(scene_name)
             .ok_or_else(|| Error::SceneNotFound(scene_name.into()))?;
@@ -135,58 +254,55 @@ impl Pipeline {
         unsafe {
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
-            self.gl.use_program(Some(*prog));
-            // Bind the previous-frame texture for this layer to TEXTURE0
-            // so the scene shader can sample its own history via `u_prev`.
-            // No other texture is in flight during a scene render, so unit 0
-            // is free; the blend pass re-binds units 0/1 fresh.
-            self.gl.active_texture(glow::TEXTURE0);
+            self.gl.use_program(Some(sp.program));
+            // Bind the prev-frame texture on the always-active TEXTURE0
+            // unit. `u_prev` and `u_audio_history` samplers were set to
+            // their unit indices when the program was linked, so no
+            // per-frame `set_uniform_int` round-trip is needed. The
+            // audio-history texture is bound permanently to TEXTURE2 in
+            // `Pipeline::new`, so we never touch unit 2 here either.
             self.gl.bind_texture(glow::TEXTURE_2D, Some(prev.texture));
-            set_uniform_int(&self.gl, *prog, "u_prev", 0);
-            // Bind the rolling audio-history texture on unit 2 (unit 1 is
-            // unused during scene rendering; the blend pass owns 0/1 for its
-            // own layer textures and re-binds them fresh).
-            if let Some(tex) = self.audio_history_texture {
-                self.gl.active_texture(glow::TEXTURE2);
-                self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-                set_uniform_int(&self.gl, *prog, "u_audio_history", 2);
-                self.gl.active_texture(glow::TEXTURE0);
+            if let Some(loc) = &sp.u_time {
+                self.gl.uniform_1_f32(Some(loc), state.time_secs);
             }
-            set_uniform_float(&self.gl, *prog, "u_time", state.time_secs);
-            set_uniform_vec2(
-                &self.gl,
-                *prog,
-                "u_resolution",
-                self.width as f32,
-                self.height as f32,
-            );
+            if let Some(loc) = &sp.u_resolution {
+                self.gl.uniform_2_f32(Some(loc), self.width as f32, self.height as f32);
+            }
             // Zero out audio bands when audio is bypassed so scenes can't
             // see leaked-through reactivity through the u_audio uniform.
             // Per-slot routing is already gated by `audio_bypass` inside
             // `effective_slot_values`, but `u_audio` was direct.
             let bands = if state.audio_bypass {
-                [0.0; 4]
+                [0.0; 5]
             } else {
                 state.audio_bands
             };
-            set_uniform_vec4(
-                &self.gl, *prog, "u_audio", bands[0], bands[1], bands[2], bands[3],
-            );
-            set_uniform_float(&self.gl, *prog, "u_trigger", state.trigger);
-            // Beat trigger is the same value as `u_trigger` for now; scenes
-            // can prefer one or the other. Zero when bypassed.
-            let beat_uniform = if state.audio_bypass {
-                0.0
-            } else {
-                state.trigger
-            };
-            set_uniform_float(&self.gl, *prog, "u_beat", beat_uniform);
-            set_uniform_float(&self.gl, *prog, "u_bpm", state.tap_tempo_bpm);
+            if let Some(loc) = &sp.u_audio {
+                // u_audio.xyzw = [bass, lomid, himid, treble]. The new
+                // mid band is uploaded separately into u_audio_mid below
+                // so existing scenes that only sample u_audio keep
+                // working unmodified.
+                self.gl.uniform_4_f32(Some(loc), bands[0], bands[1], bands[2], bands[3]);
+            }
+            if let Some(loc) = &sp.u_audio_mid {
+                self.gl.uniform_1_f32(Some(loc), bands[4]);
+            }
+            if let Some(loc) = &sp.u_trigger {
+                self.gl.uniform_1_f32(Some(loc), state.trigger);
+            }
+            let beat_uniform = if state.audio_bypass { 0.0 } else { state.trigger };
+            if let Some(loc) = &sp.u_beat {
+                self.gl.uniform_1_f32(Some(loc), beat_uniform);
+            }
+            if let Some(loc) = &sp.u_bpm {
+                self.gl.uniform_1_f32(Some(loc), state.tap_tempo_bpm);
+            }
             let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);
             for (i, v) in slots.iter().enumerate() {
-                set_uniform_float(&self.gl, *prog, &format!("u_param{i}"), *v);
+                if let Some(loc) = &sp.u_params[i] {
+                    self.gl.uniform_1_f32(Some(loc), *v);
+                }
             }
-            self.gl.bind_vertex_array(Some(self.quad_vao));
             self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
         }
         Ok(())
@@ -203,27 +319,36 @@ impl Pipeline {
             self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             self.gl
                 .viewport(0, 0, default_fb_w as i32, default_fb_h as i32);
-            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            self.gl.clear(glow::COLOR_BUFFER_BIT);
-            self.gl.use_program(Some(self.blend_program));
-            self.gl.active_texture(glow::TEXTURE0);
-            self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_a[self.front_a].texture));
-            set_uniform_int(&self.gl, self.blend_program, "u_layer_a", 0);
-            self.gl.active_texture(glow::TEXTURE1);
-            self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b[self.front_b].texture));
-            set_uniform_int(&self.gl, self.blend_program, "u_layer_b", 1);
-            set_uniform_float(&self.gl, self.blend_program, "u_xfade", state.xfade);
-            set_uniform_int(
-                &self.gl,
-                self.blend_program,
-                "u_blend_mode",
-                state.blend_mode.as_int(),
-            );
-            self.gl.bind_vertex_array(Some(self.quad_vao));
-            self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+            self.render_blend(state);
         }
+    }
+
+    /// Render the blend pass into the currently-bound framebuffer + viewport.
+    /// `render_blend_to_default` is the swapchain case; the post-FX path
+    /// binds `postfx.input_framebuffer()` first and then calls this.
+    unsafe fn render_blend(&self, state: &SharedState) {
+        self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        self.gl.clear(glow::COLOR_BUFFER_BIT);
+        self.gl.use_program(Some(self.blend.program));
+        self.gl.active_texture(glow::TEXTURE0);
+        self.gl
+            .bind_texture(glow::TEXTURE_2D, Some(self.fbo_a[self.front_a].texture));
+        self.gl.active_texture(glow::TEXTURE1);
+        self.gl
+            .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b[self.front_b].texture));
+        // Sampler bindings (u_layer_a→0, u_layer_b→1) were set at link
+        // time in `Pipeline::new` via `resolve_blend_uniforms`, so we only
+        // need to upload xfade + blend mode here.
+        if let Some(loc) = &self.blend.u_xfade {
+            self.gl.uniform_1_f32(Some(loc), state.xfade);
+        }
+        if let Some(loc) = &self.blend.u_blend_mode {
+            self.gl.uniform_1_i32(Some(loc), state.blend_mode.as_int());
+        }
+        // Restore TEXTURE0 as the active unit so the next scene draw
+        // doesn't accidentally bind its prev FBO into TEXTURE1.
+        self.gl.active_texture(glow::TEXTURE0);
+        self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
     }
 
     pub fn frame(
@@ -232,28 +357,56 @@ impl Pipeline {
         default_fb_w: u32,
         default_fb_h: u32,
     ) -> Result<()> {
-        // Layer A: write to the back FBO, sample the front (previous frame).
-        let next_a = 1 - self.front_a;
-        self.render_layer_to(
-            &self.fbo_a[next_a],
-            &self.fbo_a[self.front_a],
-            &state.layer_a.scene_name,
-            &state.layer_a.params,
-            state,
-        )?;
-        self.front_a = next_a;
+        // Layer-skip optimization: blend pass mixes A and B by xfade. When a
+        // layer's weight is zero, its frame contributes nothing — skip its
+        // scene shader. Threshold below 1/255 since the blend output is 8-bit.
+        let need_a = state.xfade < 0.999;
+        let need_b = state.xfade > 0.001;
 
-        let next_b = 1 - self.front_b;
-        self.render_layer_to(
-            &self.fbo_b[next_b],
-            &self.fbo_b[self.front_b],
-            &state.layer_b.scene_name,
-            &state.layer_b.params,
-            state,
-        )?;
-        self.front_b = next_b;
+        if need_a {
+            let (w, h) = self.layer_size_for(&state.layer_a.scene_name);
+            self.ensure_layer_a_size(w, h)?;
+            let next_a = 1 - self.front_a;
+            self.render_layer_to(
+                &self.fbo_a[next_a],
+                &self.fbo_a[self.front_a],
+                &state.layer_a.scene_name,
+                &state.layer_a.params,
+                state,
+            )?;
+            self.front_a = next_a;
+        }
 
-        self.render_blend_to_default(default_fb_w, default_fb_h, state);
+        if need_b {
+            let (w, h) = self.layer_size_for(&state.layer_b.scene_name);
+            self.ensure_layer_b_size(w, h)?;
+            let next_b = 1 - self.front_b;
+            self.render_layer_to(
+                &self.fbo_b[next_b],
+                &self.fbo_b[self.front_b],
+                &state.layer_b.scene_name,
+                &state.layer_b.params,
+                state,
+            )?;
+            self.front_b = next_b;
+        }
+
+        if self.postfx.has_enabled() {
+            // Blend → first ping-pong FBO, then walk the chain. The last
+            // enabled pass targets the swapchain itself, so we never read
+            // the GPU output back into a redundant FBO copy.
+            {
+                let target = self.postfx.input_framebuffer();
+                target.bind();
+                unsafe {
+                    self.render_blend(state);
+                }
+            }
+            self.postfx
+                .run(state, default_fb_w, default_fb_h, self.quad_vao);
+        } else {
+            self.render_blend_to_default(default_fb_w, default_fb_h, state);
+        }
         Ok(())
     }
 
@@ -370,7 +523,52 @@ impl Pipeline {
     }
 }
 
-fn compile_program(gl: &glow::Context, vert: &str, frag: &str) -> Result<glow::Program> {
+/// Look up every uniform a scene shader can reference and store the
+/// `UniformLocation` handles up front. Called once per `upsert_scene`; the
+/// resulting struct lives for the program's lifetime. Missing uniforms
+/// (e.g. a shader that doesn't use `u_beat`) are stored as `None` so the
+/// per-frame write is a 1-byte branch instead of a string round-trip into
+/// the GL driver.
+fn resolve_scene_uniforms(gl: &glow::Context, program: glow::Program) -> SceneProgram {
+    let loc = |name: &str| unsafe { gl.get_uniform_location(program, name) };
+    let u_params = std::array::from_fn(|i| loc(&format!("u_param{i}")));
+    SceneProgram {
+        program,
+        u_time: loc("u_time"),
+        u_resolution: loc("u_resolution"),
+        u_audio: loc("u_audio"),
+        u_audio_mid: loc("u_audio_mid"),
+        u_beat: loc("u_beat"),
+        u_trigger: loc("u_trigger"),
+        u_bpm: loc("u_bpm"),
+        u_params,
+    }
+}
+
+/// Same idea for the singleton blend program. Samplers `u_layer_a` and
+/// `u_layer_b` get their unit assignments set here too so the per-frame
+/// blend dispatch is just xfade + blend_mode + a draw call.
+fn resolve_blend_uniforms(gl: &glow::Context, program: glow::Program) -> BlendProgram {
+    let loc = |name: &str| unsafe { gl.get_uniform_location(program, name) };
+    let u_layer_a = loc("u_layer_a");
+    let u_layer_b = loc("u_layer_b");
+    unsafe {
+        gl.use_program(Some(program));
+        if u_layer_a.is_some() {
+            gl.uniform_1_i32(u_layer_a.as_ref(), 0);
+        }
+        if u_layer_b.is_some() {
+            gl.uniform_1_i32(u_layer_b.as_ref(), 1);
+        }
+    }
+    BlendProgram {
+        program,
+        u_xfade: loc("u_xfade"),
+        u_blend_mode: loc("u_blend_mode"),
+    }
+}
+
+pub(super) fn compile_program(gl: &glow::Context, vert: &str, frag: &str) -> Result<glow::Program> {
     unsafe {
         let v = compile_shader(gl, glow::VERTEX_SHADER, vert)?;
         let f = compile_shader(gl, glow::FRAGMENT_SHADER, frag)?;
@@ -428,10 +626,9 @@ fn create_quad_vao(gl: &glow::Context) -> Result<glow::VertexArray> {
     }
 }
 
-unsafe fn set_uniform_float(gl: &glow::Context, prog: glow::Program, name: &str, v: f32) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_1_f32(loc.as_ref(), v);
-}
+// One-shot uniform setters used by the overlay path. Hot paths (scene,
+// blend, post-FX) cache uniform locations at link time and never call
+// these.
 unsafe fn set_uniform_int(gl: &glow::Context, prog: glow::Program, name: &str, v: i32) {
     let loc = gl.get_uniform_location(prog, name);
     gl.uniform_1_i32(loc.as_ref(), v);
@@ -439,18 +636,6 @@ unsafe fn set_uniform_int(gl: &glow::Context, prog: glow::Program, name: &str, v
 unsafe fn set_uniform_vec2(gl: &glow::Context, prog: glow::Program, name: &str, x: f32, y: f32) {
     let loc = gl.get_uniform_location(prog, name);
     gl.uniform_2_f32(loc.as_ref(), x, y);
-}
-unsafe fn set_uniform_vec4(
-    gl: &glow::Context,
-    prog: glow::Program,
-    name: &str,
-    x: f32,
-    y: f32,
-    z: f32,
-    w: f32,
-) {
-    let loc = gl.get_uniform_location(prog, name);
-    gl.uniform_4_f32(loc.as_ref(), x, y, z, w);
 }
 
 const OVERLAY_VERT: &str = include_str!("../../shaders/quad.vert");

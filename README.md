@@ -73,12 +73,18 @@ Modal scheme. **Tab** cycles modes: SCENE → PARAM → LOOK → SCENE.
 - **Esc twice within 400 ms**: PANIC + close any open menu (escape hatch)
 - **F4**: open Settings menu (Audio, Slot Mapper, Preferences)
 - **Backslash / NumpadEnter**: toggle active layer (A ↔ B)
-- **Tab**: advance mode
+- **Tab** *(or NumLock+NumpadEnter)*: advance mode
 - **N / NumpadDivide**: trigger pulse
 - **M / NumpadMultiply**: cycle blend mode
-- **F**: freeze (pause `u_time`)
+- **F** *(or NumLock+Numpad0)*: freeze (pause `u_time`)
 - **L / Space / Numpad0**: tap-tempo
 - **G / NumpadDecimal**: toggle audio bypass
+- **F4** *(or NumLock+NumpadDecimal)*: open Settings menu
+
+Holding `NumLock` on a USB numpad acts as a sticky-free shift: the three
+numpad keys above gain their second meaning while NumLock is held, so the
+numpad alone can advance modes, freeze, and open menus. NumLock is also the
+"other layer" modifier for digit keys (mirrors keyboard Shift).
 
 ### SCENE mode (default)
 - **1-9** (top row or numpad): select scene N for active layer.
@@ -105,6 +111,8 @@ A *Look* is a combined A+B state: both scenes, xfade, blend, both param maps.
 - **← / →**: nudge value (Audio settings)
 - **r**: reset focused knob to default (Audio settings)
 - **Esc**: close one level. **Esc twice quickly** → PANIC.
+- **Numpad `-` + `+` + `Enter` within 400 ms (any order)** → PANIC. Works
+  even with a menu open, mirroring the double-tap-Esc escape hatch.
 
 ### Dev keys
 - **F1**: toggle top-of-screen overlay

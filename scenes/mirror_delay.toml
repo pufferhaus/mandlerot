@@ -1,5 +1,6 @@
 name = "mirror_delay"
 display_name = "Mirror Delay"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

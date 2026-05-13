@@ -1,5 +1,6 @@
 name = "halftone"
 display_name = "Halftone"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

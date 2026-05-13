@@ -1,5 +1,6 @@
 name = "tunnel"
 display_name = "Tunnel"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

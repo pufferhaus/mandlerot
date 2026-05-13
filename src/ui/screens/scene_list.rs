@@ -177,6 +177,7 @@ mod tests {
             bindings,
             state_dir: dir,
             audio,
+            postfx: None,
         }
     }
     fn ctx_r<'a>(
@@ -188,6 +189,7 @@ mod tests {
             scenes,
             bindings,
             audio,
+            postfx: None,
         }
     }
 

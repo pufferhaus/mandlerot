@@ -6,12 +6,26 @@ use crate::preset::resolve_slot;
 use crate::scene::SceneLibrary;
 use crate::state::{BlendMode, Layer, Mode, SharedState};
 
-const BLEND_MODES: [BlendMode; 5] = [
+const BLEND_MODES: [BlendMode; 19] = [
     BlendMode::Mix,
     BlendMode::Add,
     BlendMode::Multiply,
     BlendMode::Screen,
     BlendMode::Difference,
+    BlendMode::Overlay,
+    BlendMode::HardLight,
+    BlendMode::Lighten,
+    BlendMode::Darken,
+    BlendMode::Exclusion,
+    BlendMode::Subtract,
+    BlendMode::LinearBurn,
+    BlendMode::SoftLight,
+    BlendMode::ColorDodge,
+    BlendMode::ColorBurn,
+    BlendMode::Hue,
+    BlendMode::Saturation,
+    BlendMode::Color,
+    BlendMode::Luminosity,
 ];
 
 const XFADE_STEP: f32 = 0.05;
@@ -47,6 +61,7 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         }
         Action::ParamMinus => apply_param_step(state, -1)?,
         Action::ParamPlus => apply_param_step(state, 1)?,
+        Action::ParamAudioCycle { dir } => apply_param_audio_cycle(state, *dir)?,
         Action::ResetAllParams => {
             let layer = state.active_layer;
             let scene_name = match layer {
@@ -85,6 +100,14 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         }
         Action::ReloadAllScenes => { /* handled by hot_reload caller in main */ }
         Action::SceneCycle { layer, dir } => apply_scene_cycle(state, lib, *layer, *dir)?,
+        Action::SceneCycleActive { dir } => {
+            let layer = state.active_layer;
+            apply_scene_cycle(state, lib, layer, *dir)?;
+        }
+        Action::SceneCycleOther { dir } => {
+            let layer = state.active_layer.other();
+            apply_scene_cycle(state, lib, layer, *dir)?;
+        }
         Action::SetBlendMode(bm) => state.blend_mode = *bm,
         Action::SetXfade(v) => state.xfade = v.clamp(0.0, 1.0),
         Action::SetSceneByIndex { layer, index } => {
@@ -147,13 +170,11 @@ fn apply_slot(state: &mut SharedState, lib: &SceneLibrary, layer: Layer, n: u8) 
             }
         }
         Mode::Param => {
-            if (1..=8).contains(&n) {
+            if (1..=9).contains(&n) {
                 match layer {
                     Layer::A => state.selected_param_a = n - 1,
                     Layer::B => state.selected_param_b = n - 1,
                 }
-            } else if n == 9 {
-                reset_selected_param(state, lib, layer)?;
             }
         }
         Mode::Look => {
@@ -196,18 +217,25 @@ fn apply_param_step(state: &mut SharedState, dir: i8) -> Result<()> {
     Ok(())
 }
 
-fn reset_selected_param(state: &mut SharedState, _lib: &SceneLibrary, layer: Layer) -> Result<()> {
-    let slot = match layer {
-        Layer::A => state.selected_param_a,
-        Layer::B => state.selected_param_b,
-    };
+fn apply_param_audio_cycle(state: &mut SharedState, dir: i8) -> Result<()> {
+    if !matches!(state.active_mode, Mode::Param) {
+        return Ok(());
+    }
+    let layer = state.active_layer;
+    let slot = state.selected_param();
     let layer_state = match layer {
         Layer::A => &mut state.layer_a,
         Layer::B => &mut state.layer_b,
     };
-    let defs = layer_state.params.defs().to_vec();
-    if let Some(def) = defs.iter().find(|d| d.slot == slot) {
-        layer_state.params.set(&def.name, def.default);
+    let name = layer_state
+        .params
+        .defs()
+        .iter()
+        .find(|d| d.slot == slot)
+        .map(|d| d.name.clone());
+    if let Some(n) = name {
+        layer_state.params.cycle_audio_route(&n, dir);
+        state.look_dirty = true;
     }
     Ok(())
 }
@@ -388,6 +416,23 @@ mod tests {
     }
 
     #[test]
+    fn slot_9_in_param_mode_selects_ninth_slot() {
+        let lib = three_scenes();
+        let mut s = base_state(&lib);
+        s.active_mode = Mode::Param;
+        apply(
+            &Action::Slot {
+                n: 9,
+                other_layer: false,
+            },
+            &mut s,
+            &lib,
+        )
+        .unwrap();
+        assert_eq!(s.selected_param_a, 8);
+    }
+
+    #[test]
     fn slot_9_in_preset_mode_resets_all_params() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
@@ -406,13 +451,33 @@ mod tests {
     }
 
     #[test]
-    fn blend_cycle_advances_through_five_modes_then_wraps() {
+    fn blend_cycle_wraps_after_full_cycle() {
+        let lib = three_scenes();
+        let mut s = base_state(&lib);
+        for _ in 0..19 {
+            apply(&Action::BlendCycle, &mut s, &lib).unwrap();
+        }
+        assert_eq!(s.blend_mode, BlendMode::Mix);
+    }
+
+    #[test]
+    fn blend_cycle_visits_overlay_after_difference() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
         for _ in 0..5 {
             apply(&Action::BlendCycle, &mut s, &lib).unwrap();
         }
-        assert_eq!(s.blend_mode, BlendMode::Mix);
+        assert_eq!(s.blend_mode, BlendMode::Overlay);
+    }
+
+    #[test]
+    fn blend_cycle_visits_softlight_after_linearburn() {
+        let lib = three_scenes();
+        let mut s = base_state(&lib);
+        for _ in 0..12 {
+            apply(&Action::BlendCycle, &mut s, &lib).unwrap();
+        }
+        assert_eq!(s.blend_mode, BlendMode::SoftLight);
     }
 
     #[test]

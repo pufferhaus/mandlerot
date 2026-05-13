@@ -46,19 +46,31 @@ impl AudioHistory {
     /// Snapshot the buffer in **time order** (oldest first, newest last).
     /// Returns RGBA8 byte vec ready for `tex_image_2d` (1 × 320 × 4 bytes).
     pub fn snapshot_rgba(&self) -> Vec<u8> {
+        let mut out = vec![0u8; HISTORY_LEN * 4];
+        self.snapshot_into(&mut out);
+        out
+    }
+
+    /// Same as `snapshot_rgba` but writes into a caller-owned buffer. The
+    /// render loop allocates a single 1280-byte scratch buffer at startup
+    /// and reuses it every frame, dropping ~30 allocator round-trips per
+    /// second on the Pi 3B+ where the global allocator competes with the
+    /// audio worker thread for the same heap.
+    pub fn snapshot_into(&self, dst: &mut [u8]) {
+        debug_assert_eq!(dst.len(), HISTORY_LEN * 4);
         let g = self.inner.lock().unwrap();
-        let mut out = Vec::with_capacity(HISTORY_LEN * 4);
         // Read from oldest to newest. With a partially-filled ring, `head`
-        // points at the next write slot, which is also the oldest entry once
-        // we've wrapped at least once. Before wrap, slots ahead of `head` are
-        // still the zero-initialized values, which read correctly as silence.
+        // points at the next write slot, which is also the oldest entry
+        // once we've wrapped at least once. Before wrap, slots ahead of
+        // `head` are still the zero-initialised values, which read
+        // correctly as silence.
         let start = g.head;
         for i in 0..HISTORY_LEN {
             let idx = (start + i) % HISTORY_LEN;
             let e = g.buf[idx];
-            out.extend_from_slice(&e);
+            let off = i * 4;
+            dst[off..off + 4].copy_from_slice(&e);
         }
-        out
     }
 
     pub fn handle(&self) -> AudioHistoryHandle {

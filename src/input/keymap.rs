@@ -20,7 +20,12 @@ pub type RawKey = String;
 pub enum Modifier {
     None,
     Shift,
-    NumLock,
+    /// "000" key on the cheap USB numpad we ship the project against. Acts
+    /// as a held shift-equivalent so a single key on the pad can second-
+    /// meaning any other key. (NumLock was previously a parallel modifier
+    /// but is now a primary key — SceneCycleActive previous — because the
+    /// rotated pad layout needs every primary key.)
+    Numpad000,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,7 +73,7 @@ impl KeyMap {
             let modifier = match b.modifier.as_deref() {
                 None => Modifier::None,
                 Some("Shift") => Modifier::Shift,
-                Some("NumLock") => Modifier::NumLock,
+                Some("Numpad000") => Modifier::Numpad000,
                 Some(other) => {
                     return Err(Error::Backend(format!("unknown modifier: {other}")));
                 }
@@ -113,19 +118,25 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
         return Ok(ActionTemplate::Static(Action::OpenMenu(kind)));
     }
     if let Some(rest) = label.strip_prefix("SceneCycle:") {
-        // SceneCycle:A:1 or SceneCycle:B:-1
+        // SceneCycle:A:1, SceneCycle:B:-1, or SceneCycle:active:N.
         let parts: Vec<&str> = rest.split(':').collect();
         if parts.len() != 2 {
             return Err(Error::Backend(format!("bad SceneCycle label: {label}")));
+        }
+        let dir: i8 = parts[1]
+            .parse()
+            .map_err(|_| Error::Backend(format!("bad dir: {}", parts[1])))?;
+        if parts[0] == "active" {
+            return Ok(ActionTemplate::Static(Action::SceneCycleActive { dir }));
+        }
+        if parts[0] == "other" {
+            return Ok(ActionTemplate::Static(Action::SceneCycleOther { dir }));
         }
         let layer = match parts[0] {
             "A" => Layer::A,
             "B" => Layer::B,
             _ => return Err(Error::Backend(format!("bad layer: {}", parts[0]))),
         };
-        let dir: i8 = parts[1]
-            .parse()
-            .map_err(|_| Error::Backend(format!("bad dir: {}", parts[1])))?;
         return Ok(ActionTemplate::Static(Action::SceneCycle { layer, dir }));
     }
     let action = match label {
@@ -135,6 +146,8 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
         "XfadePlus" => Action::XfadePlus,
         "ParamMinus" => Action::ParamMinus,
         "ParamPlus" => Action::ParamPlus,
+        "ParamAudioMinus" => Action::ParamAudioCycle { dir: -1 },
+        "ParamAudioPlus" => Action::ParamAudioCycle { dir: 1 },
         "Trigger" => Action::Trigger,
         "BlendCycle" => Action::BlendCycle,
         "FreezeToggle" => Action::FreezeToggle,
@@ -153,7 +166,7 @@ fn materialize(template: &ActionTemplate, held: Modifier) -> Action {
     match template {
         ActionTemplate::Static(a) => a.clone(),
         ActionTemplate::Slot(n) => {
-            let other_layer = matches!(held, Modifier::Shift | Modifier::NumLock);
+            let other_layer = matches!(held, Modifier::Shift | Modifier::Numpad000);
             Action::Slot { n: *n, other_layer }
         }
     }
@@ -185,7 +198,7 @@ mod tests {
             xfade: 0.0,
             blend_mode: BlendMode::Mix,
             time_secs: 0.0,
-            audio_bands: [0.0; 4],
+            audio_bands: [0.0; 5],
             trigger: 0.0,
             active_mode: crate::state::Mode::Scene,
             active_layer: crate::state::Layer::A,
@@ -241,16 +254,81 @@ mod tests {
     }
 
     #[test]
-    fn slot_with_numlock_is_other_layer() {
+    fn numpad_digits_are_remapped_for_rotated_pad() {
+        // 3x3 block reads naturally when the pad is on its left side.
+        // Physical key → assigned slot: 9→1, 6→2, 3→3, 8→4, 5→5, 2→6,
+        // 7→7, 4→8, 1→9.
         let km = parsed();
         let s = dummy_state();
-        let a = km.lookup("Numpad1", Modifier::NumLock, &s).unwrap();
+        for (physical, expected_slot) in [
+            ("Numpad9", 1),
+            ("Numpad6", 2),
+            ("Numpad3", 3),
+            ("Numpad8", 4),
+            ("Numpad5", 5),
+            ("Numpad2", 6),
+            ("Numpad7", 7),
+            ("Numpad4", 8),
+            ("Numpad1", 9),
+        ] {
+            let a = km.lookup(physical, Modifier::None, &s).unwrap();
+            assert_eq!(
+                a,
+                Action::Slot {
+                    n: expected_slot,
+                    other_layer: false,
+                },
+                "{physical} should map to slot {expected_slot}"
+            );
+        }
+    }
+
+    #[test]
+    fn numlock_is_scene_cycle_active_previous() {
+        // NumLock is no longer a modifier — on the rotated pad it sits in
+        // the operator's primary-key zone and cycles to the previous scene
+        // on whichever layer is active.
+        let km = parsed();
+        let s = dummy_state();
         assert_eq!(
-            a,
-            Action::Slot {
-                n: 1,
-                other_layer: true
-            }
+            km.lookup("NumLock", Modifier::None, &s),
+            Some(Action::SceneCycleActive { dir: -1 })
+        );
+    }
+
+    #[test]
+    fn backspace_is_scene_cycle_active_next() {
+        let km = parsed();
+        let s = dummy_state();
+        assert_eq!(
+            km.lookup("Backspace", Modifier::None, &s),
+            Some(Action::SceneCycleActive { dir: 1 })
+        );
+    }
+
+    #[test]
+    fn numpad000_modifier_cycles_other_layer_scenes() {
+        let km = parsed();
+        let s = dummy_state();
+        assert_eq!(
+            km.lookup("Backspace", Modifier::Numpad000, &s),
+            Some(Action::SceneCycleOther { dir: 1 })
+        );
+        assert_eq!(
+            km.lookup("NumLock", Modifier::Numpad000, &s),
+            Some(Action::SceneCycleOther { dir: -1 })
+        );
+    }
+
+    #[test]
+    fn numpad000_plus_five_resets_all_params() {
+        // `000+5` overrides the implicit "Slot 5 on other layer" template
+        // and becomes a one-shot reset for everything on the active layer.
+        let km = parsed();
+        let s = dummy_state();
+        assert_eq!(
+            km.lookup("Numpad5", Modifier::Numpad000, &s),
+            Some(Action::ResetAllParams)
         );
     }
 
@@ -262,15 +340,57 @@ mod tests {
     }
 
     #[test]
-    fn esc_and_bksp_both_panic() {
+    fn esc_panics_single_press() {
         let km = parsed();
         let s = dummy_state();
+        // Esc keeps its keyboard Panic role. Backspace is repurposed as
+        // SceneCycleActive next — see `backspace_is_scene_cycle_active_next`.
+        // A double-tap of either still fires Panic via the global watcher
+        // in main.rs (not exercised here).
         assert_eq!(km.lookup("Esc", Modifier::None, &s), Some(Action::Panic));
+    }
+
+    #[test]
+    fn numpad_decimal_unmodified_is_advance_mode() {
+        // `.` is the primary mode-cycle key in the new layout — bottom row,
+        // single press. AudioBypass moved off this slot onto a 000-held combo.
+        let km = parsed();
+        let s = dummy_state();
         assert_eq!(
-            km.lookup("Backspace", Modifier::None, &s),
-            Some(Action::Panic)
+            km.lookup("NumpadDecimal", Modifier::None, &s),
+            Some(Action::AdvanceMode)
         );
     }
+
+    #[test]
+    fn numpad000_modifier_unlocks_orphan_actions() {
+        // Holding the `000` key on the cheap pad turns three bottom-row
+        // keys into less-frequent actions.
+        let km = parsed();
+        let s = dummy_state();
+        assert_eq!(
+            km.lookup("NumpadEnter", Modifier::Numpad000, &s),
+            Some(Action::AudioBypass)
+        );
+        assert_eq!(
+            km.lookup("Numpad0", Modifier::Numpad000, &s),
+            Some(Action::FreezeToggle)
+        );
+        assert_eq!(
+            km.lookup("NumpadDecimal", Modifier::Numpad000, &s),
+            Some(Action::OpenMenu(MenuKind::Settings))
+        );
+        // The digit row flips to "other layer" under 000 — except Numpad5,
+        // which is overridden to ResetAllParams (covered by its own test).
+        assert_eq!(
+            km.lookup("Numpad1", Modifier::Numpad000, &s),
+            Some(Action::Slot {
+                n: 9,
+                other_layer: true
+            })
+        );
+    }
+
 
     #[test]
     fn enter_and_backslash_both_toggle_layer() {

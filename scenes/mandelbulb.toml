@@ -1,6 +1,6 @@
 name = "mandelbulb"
 display_name = "Mandelbulb"
-internal_resolution = "360x240"
+internal_resolution = "180x120"
 
 [[params]]
 slot = 0
@@ -18,15 +18,15 @@ max = 2.0
 default = 0.5
 curve = "linear"
 audio_route = "lomid"
-audio_amount = 0.3
+audio_amount = 0.1
 audio_polarity = 1.0
 
 [[params]]
 slot = 2
 name = "cam_distance"
-min = 1.5
-max = 4.0
-default = 2.6
+min = 1.4
+max = 3.5
+default = 2.8
 curve = "linear"
 audio_route = "bass"
 audio_amount = 0.4
@@ -46,7 +46,7 @@ audio_polarity = 1.0
 [[params]]
 slot = 4
 name = "detail"
-min = 16.0
-max = 96.0
-default = 48.0
+min = 8.0
+max = 48.0
+default = 36.0
 curve = "linear"

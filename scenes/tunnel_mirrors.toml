@@ -1,5 +1,6 @@
 name = "tunnel_mirrors"
 display_name = "Tunnel Mirrors"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

@@ -1,5 +1,6 @@
 name = "kaleidoscope"
 display_name = "Kaleidoscope"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

@@ -31,7 +31,7 @@ void main() {
     float n = max(u_param0, 8.0);
     float w = u_param1;
     float scale = u_param3;
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 96; i++) {
         if (float(i) >= n) break;
         // v=1 is newest, v=0 oldest; sample evenly across our window
         float v = 1.0 - (float(i) / (n - 1.0)) * 0.5; // last half of history

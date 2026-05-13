@@ -13,7 +13,7 @@
 
 float DE(vec3 p, int iters, float scale, vec3 offset){
     int n = 0;
-    for (n = 0; n < 18; n++){
+    for (n = 0; n < 12; n++){
         if (n >= iters) break;
         if (p.x + p.y < 0.0) p.xy = -p.yx;
         if (p.x + p.z < 0.0) p.xz = -p.zx;
@@ -47,11 +47,11 @@ void main(){
     float t = 0.0;
     float hit = 0.0;
     float escape = 0.0;
-    for (int j = 0; j < 96; j++){
+    for (int j = 0; j < 32; j++){
         if (j >= steps) break;
         vec3 p = ro + rd * t;
         float d = DE(p, iters, scale, off);
-        if (d < 0.001){ hit = 1.0; escape = float(j) / float(steps); break; }
+        if (d < 0.003){ hit = 1.0; escape = float(j) / float(steps); break; }
         if (t > 8.0) break;
         t += max(d, 0.001);
     }

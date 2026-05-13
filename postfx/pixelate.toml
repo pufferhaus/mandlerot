@@ -1,0 +1,11 @@
+name = "pixelate"
+display_name = "Pixelate"
+enabled_by_default = false
+
+[[params]]
+slot = 0
+name = "cell"
+min = 1.0
+max = 32.0
+default = 6.0
+curve = "linear"

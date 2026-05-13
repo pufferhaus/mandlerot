@@ -1,5 +1,6 @@
 name = "waveform_line"
 display_name = "Waveform Line"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

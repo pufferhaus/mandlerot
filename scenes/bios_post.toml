@@ -1,5 +1,6 @@
 name = "bios_post"
 display_name = "BIOS POST"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

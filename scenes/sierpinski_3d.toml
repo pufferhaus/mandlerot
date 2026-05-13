@@ -1,5 +1,7 @@
 name = "sierpinski_3d"
 display_name = "Sierpinski 3D"
+internal_resolution = "200x140"
+
 
 [[params]]
 slot = 0
@@ -32,16 +34,16 @@ audio_polarity = 1.0
 slot = 3
 name = "detail"
 min = 16.0
-max = 96.0
-default = 48.0
+max = 32.0
+default = 20.0
 curve = "linear"
 
 [[params]]
 slot = 4
 name = "iterations"
 min = 5.0
-max = 18.0
-default = 12.0
+max = 12.0
+default = 8.0
 curve = "linear"
 
 [[params]]

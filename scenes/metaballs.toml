@@ -1,5 +1,6 @@
 name = "metaballs"
 display_name = "Metaballs"
+internal_resolution = "480x320"
 
 [[params]]
 slot = 0

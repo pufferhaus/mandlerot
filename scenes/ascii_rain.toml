@@ -1,5 +1,6 @@
 name = "ascii_rain"
 display_name = "Matrix Rain"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

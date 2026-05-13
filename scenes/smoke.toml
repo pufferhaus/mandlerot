@@ -1,5 +1,6 @@
 name = "smoke"
 display_name = "Smoke"
+internal_resolution = "360x240"
 
 [[params]]
 slot = 0

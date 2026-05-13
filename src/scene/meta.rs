@@ -11,6 +11,11 @@ pub struct SceneMeta {
     pub internal_resolution: Option<String>,
     #[serde(default)]
     pub params: Vec<ParamDef>,
+    /// Used by post-FX passes only — scenes ignore this. Lets a `postfx/*.toml`
+    /// declare "ship this pass off by default" (e.g. Pixelate) without needing
+    /// a separate metadata schema.
+    #[serde(default)]
+    pub enabled_by_default: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,6 +53,9 @@ pub enum AudioRoute {
     Himid,
     Treble,
     Beat,
+    /// Centre-mid band (≈500–2000 Hz). Routed from `bands[4]` and the
+    /// `u_audio_mid` shader uniform.
+    Mid,
 }
 
 fn default_curve() -> Curve {
@@ -65,13 +73,27 @@ impl SceneMeta {
         })
     }
 
+    /// Parse the `internal_resolution = "WxH"` string into pixel dims, if set.
+    /// Returns None for unset, malformed, or zero-sized values — the pipeline
+    /// falls back to the global render-scale dims in that case.
+    pub fn internal_resolution_size(&self) -> Option<(u32, u32)> {
+        let s = self.internal_resolution.as_ref()?;
+        let mut parts = s.split('x');
+        let w: u32 = parts.next()?.trim().parse().ok()?;
+        let h: u32 = parts.next()?.trim().parse().ok()?;
+        if w == 0 || h == 0 {
+            return None;
+        }
+        Some((w, h))
+    }
+
     /// Validate cross-field constraints (slot uniqueness, range sanity).
     pub fn validate(&self) -> Result<()> {
-        let mut seen = [false; 8];
+        let mut seen = [false; 9];
         for p in &self.params {
-            if p.slot >= 8 {
+            if p.slot >= 9 {
                 return Err(Error::ShaderCompile(format!(
-                    "param slot {} out of range (must be 0-7)",
+                    "param slot {} out of range (must be 0-8)",
                     p.slot
                 )));
             }

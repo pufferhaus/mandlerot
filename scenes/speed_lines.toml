@@ -1,5 +1,6 @@
 name = "speed_lines"
 display_name = "Speed Lines"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

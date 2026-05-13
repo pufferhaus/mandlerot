@@ -2,6 +2,8 @@ pub mod compose;
 pub mod glyphs;
 pub mod grid;
 pub mod render;
+pub mod snapshot;
+pub mod sysmon;
 pub mod theme;
 pub mod thread;
 

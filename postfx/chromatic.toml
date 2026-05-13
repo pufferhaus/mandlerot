@@ -1,0 +1,19 @@
+name = "chromatic"
+display_name = "Chromatic Ab"
+enabled_by_default = false
+
+[[params]]
+slot = 0
+name = "shift"
+min = 0.0
+max = 0.02
+default = 0.004
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "falloff"
+min = 0.0
+max = 4.0
+default = 1.6
+curve = "linear"

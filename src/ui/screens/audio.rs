@@ -53,6 +53,13 @@ const KNOBS: &[Knob] = &[
         default: DEFAULT_GAIN,
         step: 0.05,
     },
+    Knob {
+        label: "Gain Mid",
+        min: 0.0,
+        max: 4.0,
+        default: DEFAULT_GAIN,
+        step: 0.05,
+    },
 ];
 
 pub struct AudioSettingsScreen {
@@ -210,6 +217,7 @@ mod tests {
             bindings,
             state_dir: dir,
             audio,
+            postfx: None,
         }
     }
 

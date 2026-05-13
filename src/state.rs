@@ -31,6 +31,20 @@ pub enum BlendMode {
     Multiply = 2,
     Screen = 3,
     Difference = 4,
+    Overlay = 5,
+    HardLight = 6,
+    Lighten = 7,
+    Darken = 8,
+    Exclusion = 9,
+    Subtract = 10,
+    LinearBurn = 11,
+    SoftLight = 12,
+    ColorDodge = 13,
+    ColorBurn = 14,
+    Hue = 15,
+    Saturation = 16,
+    Color = 17,
+    Luminosity = 18,
 }
 
 impl BlendMode {
@@ -41,6 +55,20 @@ impl BlendMode {
             "multiply" | "mult" => Some(Self::Multiply),
             "screen" => Some(Self::Screen),
             "difference" | "diff" => Some(Self::Difference),
+            "overlay" => Some(Self::Overlay),
+            "hardlight" | "hardlt" => Some(Self::HardLight),
+            "lighten" | "lgt" => Some(Self::Lighten),
+            "darken" | "drk" => Some(Self::Darken),
+            "exclusion" | "excl" => Some(Self::Exclusion),
+            "subtract" | "sub" => Some(Self::Subtract),
+            "linearburn" | "linbn" => Some(Self::LinearBurn),
+            "softlight" | "softlt" => Some(Self::SoftLight),
+            "colordodge" | "coldodge" | "coldg" => Some(Self::ColorDodge),
+            "colorburn" | "colburn" | "colbn" => Some(Self::ColorBurn),
+            "hue" => Some(Self::Hue),
+            "saturation" | "sat" => Some(Self::Saturation),
+            "color" => Some(Self::Color),
+            "luminosity" | "lumin" => Some(Self::Luminosity),
             _ => None,
         }
     }
@@ -62,7 +90,11 @@ pub struct SharedState {
     pub xfade: f32,
     pub blend_mode: BlendMode,
     pub time_secs: f32,
-    pub audio_bands: [f32; 4],
+    /// `[bass, lomid, himid, treble, mid]` — see `audio::bands::BAND_*`.
+    /// The first four indices stay the legacy layout so `u_audio.xyzw`
+    /// (vec4 uniform) maps to them; `mid` at index 4 is exposed via the
+    /// standalone `u_audio_mid` scalar uniform.
+    pub audio_bands: [f32; 5],
     pub trigger: f32,
     pub active_mode: Mode,
     pub active_layer: Layer,
@@ -101,7 +133,7 @@ impl SharedState {
             xfade: xfade.clamp(0.0, 1.0),
             blend_mode,
             time_secs: 0.0,
-            audio_bands: [0.0; 4],
+            audio_bands: [0.0; 5],
             trigger: 0.0,
             active_mode: Mode::Scene,
             active_layer: Layer::A,
@@ -163,6 +195,62 @@ mod tests {
     fn blend_mode_int_matches_shader() {
         assert_eq!(BlendMode::Mix.as_int(), 0);
         assert_eq!(BlendMode::Difference.as_int(), 4);
+        assert_eq!(BlendMode::Overlay.as_int(), 5);
+        assert_eq!(BlendMode::LinearBurn.as_int(), 11);
+    }
+
+    #[test]
+    fn blend_mode_parses_tier1_names_and_aliases() {
+        // Canonical names round-trip.
+        for (s, expect) in [
+            ("overlay", BlendMode::Overlay),
+            ("hardlight", BlendMode::HardLight),
+            ("lighten", BlendMode::Lighten),
+            ("darken", BlendMode::Darken),
+            ("exclusion", BlendMode::Exclusion),
+            ("subtract", BlendMode::Subtract),
+            ("linearburn", BlendMode::LinearBurn),
+        ] {
+            assert_eq!(BlendMode::parse(s), Some(expect), "canonical {s}");
+        }
+        // Short aliases match the 6-char status panel tags so users can type
+        // either name when hand-editing a Look.
+        for (s, expect) in [
+            ("hardlt", BlendMode::HardLight),
+            ("lgt", BlendMode::Lighten),
+            ("drk", BlendMode::Darken),
+            ("excl", BlendMode::Exclusion),
+            ("sub", BlendMode::Subtract),
+            ("linbn", BlendMode::LinearBurn),
+        ] {
+            assert_eq!(BlendMode::parse(s), Some(expect), "alias {s}");
+        }
+    }
+
+    #[test]
+    fn blend_mode_parses_tier2_names_and_aliases() {
+        for (s, expect) in [
+            ("softlight", BlendMode::SoftLight),
+            ("colordodge", BlendMode::ColorDodge),
+            ("colorburn", BlendMode::ColorBurn),
+            ("hue", BlendMode::Hue),
+            ("saturation", BlendMode::Saturation),
+            ("color", BlendMode::Color),
+            ("luminosity", BlendMode::Luminosity),
+        ] {
+            assert_eq!(BlendMode::parse(s), Some(expect), "canonical {s}");
+        }
+        for (s, expect) in [
+            ("softlt", BlendMode::SoftLight),
+            ("coldg", BlendMode::ColorDodge),
+            ("coldodge", BlendMode::ColorDodge),
+            ("colbn", BlendMode::ColorBurn),
+            ("colburn", BlendMode::ColorBurn),
+            ("sat", BlendMode::Saturation),
+            ("lumin", BlendMode::Luminosity),
+        ] {
+            assert_eq!(BlendMode::parse(s), Some(expect), "alias {s}");
+        }
     }
 }
 

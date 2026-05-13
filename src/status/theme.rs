@@ -4,14 +4,19 @@ use embedded_graphics::pixelcolor::Rgb565;
 
 use crate::status::grid::{ATTR_BRIGHT, ATTR_DIM, ATTR_INVERSE};
 
-/// Body (#FFB000)
-pub const FG_NORMAL: Rgb565 = Rgb565::new(31, 44, 0);
-/// Bright (#FFD000)
-pub const FG_BRIGHT: Rgb565 = Rgb565::new(31, 52, 0);
-/// Dim (#663D00)
-pub const FG_DIM: Rgb565 = Rgb565::new(12, 15, 0);
-/// Background (#0A0500)
-pub const BG: Rgb565 = Rgb565::new(1, 1, 0);
+// Color values are tuned empirically against the MPI3501 ILI9486 SPI panel.
+// The R channel on this clone is weak so G has to carry brightness — and
+// at low R values G dominates entirely (text reads as green). We cap R at
+// max and use only G to vary "intensity"; dim is just pure red as a
+// visually distinct accent rather than a dimmer-amber.
+/// Body
+pub const FG_NORMAL: Rgb565 = Rgb565::new(31, 36, 0);
+/// Bright
+pub const FG_BRIGHT: Rgb565 = Rgb565::new(31, 48, 0);
+/// Dim — pure red. Don't try to dim with reduced R; the hue collapses to green.
+pub const FG_DIM: Rgb565 = Rgb565::new(31, 0, 0);
+/// Background — pure black so the panel BG isn't tinted by the G bleed.
+pub const BG: Rgb565 = Rgb565::new(0, 0, 0);
 
 /// Resolve `(fg, bg)` for a given attribute byte.
 pub fn resolve(attr: u8) -> (Rgb565, Rgb565) {

@@ -1,5 +1,6 @@
 name = "pipes_3d"
 display_name = "3D Pipes"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

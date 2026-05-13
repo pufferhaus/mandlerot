@@ -2,9 +2,10 @@
 width = 720
 height = 480
 fps = 30
+render_scale = 0.33
 
 [initial]
-scene_a = "vectorscope"
-scene_b = "solid"
-xfade = 0.0
+scene_a = "metaballs"
+scene_b = "mandelbulb"
+xfade = 0.5
 blend_mode = "mix"

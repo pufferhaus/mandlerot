@@ -15,7 +15,7 @@ float DE(vec3 p, vec3 c, float power, int iters){
     vec3 z = p;
     float dr = 1.0;
     float r = 0.0;
-    for (int i = 0; i < 12; i++){
+    for (int i = 0; i < 6; i++){
         if (i >= iters) break;
         r = length(z);
         if (r > 2.0) break;
@@ -57,11 +57,11 @@ void main(){
     float t = 0.0;
     float hit = 0.0;
     float escape = 0.0;
-    for (int j = 0; j < 96; j++){
+    for (int j = 0; j < 48; j++){
         if (j >= steps) break;
         vec3 p = ro + rd * t;
-        float d = DE(p, c, power, 8);
-        if (d < 0.001){ hit = 1.0; escape = float(j) / float(steps); break; }
+        float d = DE(p, c, power, 5);
+        if (d < 0.003){ hit = 1.0; escape = float(j) / float(steps); break; }
         if (t > 6.0) break;
         t += max(d, 0.001);
     }

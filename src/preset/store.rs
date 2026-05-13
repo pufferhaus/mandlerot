@@ -142,6 +142,20 @@ fn blend_mode_str(b: BlendMode) -> &'static str {
         BlendMode::Multiply => "multiply",
         BlendMode::Screen => "screen",
         BlendMode::Difference => "difference",
+        BlendMode::Overlay => "overlay",
+        BlendMode::HardLight => "hardlight",
+        BlendMode::Lighten => "lighten",
+        BlendMode::Darken => "darken",
+        BlendMode::Exclusion => "exclusion",
+        BlendMode::Subtract => "subtract",
+        BlendMode::LinearBurn => "linearburn",
+        BlendMode::SoftLight => "softlight",
+        BlendMode::ColorDodge => "colordodge",
+        BlendMode::ColorBurn => "colorburn",
+        BlendMode::Hue => "hue",
+        BlendMode::Saturation => "saturation",
+        BlendMode::Color => "color",
+        BlendMode::Luminosity => "luminosity",
     }
 }
 

@@ -1,5 +1,6 @@
 name = "lissajous"
 display_name = "Lissajous"
+internal_resolution = "200x140"
 
 [[params]]
 slot = 0

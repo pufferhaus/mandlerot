@@ -1,5 +1,6 @@
 name = "strobe"
 display_name = "Strobe"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

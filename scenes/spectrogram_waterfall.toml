@@ -1,5 +1,6 @@
 name = "spectrogram_waterfall"
 display_name = "Spectrogram Waterfall"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

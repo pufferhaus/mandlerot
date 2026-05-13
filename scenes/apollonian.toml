@@ -1,5 +1,7 @@
 name = "apollonian"
 display_name = "Apollonian"
+internal_resolution = "200x140"
+
 
 [[params]]
 slot = 0

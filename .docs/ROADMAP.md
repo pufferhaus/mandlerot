@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
-- **2026-05-11** 17 new effects shipped: crt_collapse, vhs_tracking, datamosh, hex_rain, smoke, speed_lines, halftone, transform_rings, sparkle, pong, pond, boids, donut, voxel_terrain, bios_post, vectorscope, bayer.
-- **2026-05-11** Preset → Look rename. `Mode::Look`, `LookStore`, `looks.json` on disk with one-shot migration from `presets.json`. Status panel reads "LOOK"/"LOOKS"; CLI accepts `--looks` (or `--presets` as alias).
-- **2026-05-10** Audio settings screen + SettingsScreen root menu under F4. Slot Mapper nested. Active-layer header inverts on status panel. Double-tap Esc = panic-from-anywhere.
+- **2026-05-12** Post-FX phase 2: `PostFxScreen` (toggle + dive) and `PostFxParamScreen` (Up/Down picks param, Left/Right nudges 2% of range, `r` resets) wired into the F4 Settings menu. Eager-save to `<state_dir>/postfx.toml` on every mutation; load layers user overrides on top of each pass's `enabled_by_default`. Two new passes: Chromatic Aberration (distance-scaled RGB split) and Bayer Dither (4×4 ordered, 16-arm if-chain because GLSL ES 1.00 lacks array-constructor literals). 182 tests green.
+- **2026-05-12** Post-FX phase 1: `src/render/postfx.rs` (PostFx + 2-FBO ping-pong + per-pass `ParamMap`), `shaders/postfx_prelude.glsl`, three passes — Vignette (on), Grain (on), Pixelate (off). Pipeline reroutes blend → chain → swapchain only when at least one pass is enabled; empty chain = old fast path. Audio routing on post-FX params works for free via existing `effective_slot_values`. Memory cost on Pi 3B+: +2.64 MB.
+- **2026-05-12** Blend modes tier 1: 7 new arms in `shaders/blend.glsl` — Overlay, HardLight, Lighten, Darken, Exclusion, Subtract, LinearBurn (12 total). Shader refactored to `mix(a, OP, xfade)` shape with a single trailing `else` fallback. `BlendMode` parse adds canonical names + short aliases matching the 6-char status tags.
 
 ## Design Notes
 
@@ -49,8 +49,13 @@ _(none currently tracked)_
 | 22 | Scene: Audio vectorscope | ✅ | `scenes/vectorscope.{glsl,toml}` |
 | 23 | Scene: Bayer 1-bit dither | ✅ | `scenes/bayer.{glsl,toml}` |
 | 24 | Composite video input (USB capture → live texture as a layer) | ☐ | `src/video/`, `src/render/pipeline.rs`, `src/state.rs` |
-| 25 | Additional blend modes (Overlay, Soft/Hard Light, Dodge/Burn, Lighten/Darken, Exclusion, Subtract, HSL family) | ☐ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
-| 26 | Post-processing FX pipeline (bloom, vignette, grain, CRT, dither, pixelate, LUT) | ☐ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `src/ui/screens/postfx.rs` |
+| 25 | Additional blend modes — tier 1 (Overlay, HardLight, Lighten, Darken, Exclusion, Subtract, LinearBurn) | ✅ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
+| 25b | Blend modes tier 2 (SoftLight, ColorDodge, ColorBurn, Hue, Saturation, Color, Luminosity) | ✅ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
+| 26a | Post-FX phase 1: chain skeleton + Vignette/Grain/Pixelate passes (no UI, no persistence) | ✅ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `shaders/postfx_prelude.glsl`, `postfx/*.{glsl,toml}` |
+| 26b | Post-FX phase 2: UI (F4→Post-FX), `postfx.toml` persistence, Chromatic Aberration + Bayer Dither | ✅ | `src/ui/screens/postfx.rs`, `src/render/postfx.rs`, `postfx/{chromatic,dither}.{glsl,toml}` |
+| 26b' | Post-FX phase 2b: LUT colour grade (needs PNG loader + aux texture) + hot-reload of `postfx/` dir | ☐ | `src/render/postfx.rs`, `src/hot_reload.rs`, `postfx/lut.{glsl,toml}` |
+| 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ☐ | `src/render/postfx.rs`, `postfx/{bloom,crt}.{glsl,toml}` |
+| 26d | Post-FX phase 4: per-Look post-FX (Look schema bump to v2) | ☐ | `src/preset/store.rs`, `src/apply.rs` |
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
 
 Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on completion.
@@ -58,6 +63,7 @@ Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on
 ## Backlog (post-current-phase)
 
 - Pi smoke test (blocked until hardware in hand)
+- MPI3501 status panel: characterize the actual color response (R-channel weak, G→B bleed) and write a real Rgb565→fb conversion in `status::pi`. Current values in `status::theme` are empirical workarounds — amber is approximate, "dim" is just pure red because reducing R kills the hue.
 - Touch input on SPI panel (XPT2046 wired, software TBD)
 - MIDI / OSC control surface
 - Look workflow inside menu (rename slots, see saved-at, recall from menu)

@@ -1,5 +1,6 @@
 name = "conway"
 display_name = "Conway"
+internal_resolution = "600x400"
 
 [[params]]
 slot = 0

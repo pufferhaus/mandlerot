@@ -11,11 +11,11 @@
 // u_param6  shininess    (0..1, 0.55)   — specular highlight strength [treble +]
 // u_param7  bg_tint      (0..0.25, .04) — background brightness
 
-#define MAX_STEPS 48
-#define MAX_DIST  28.0
-#define SURF_DIST 0.005
-#define NPIPES    3
-#define NSEG      14
+#define MAX_STEPS 14
+#define MAX_DIST  18.0
+#define SURF_DIST 0.02
+#define NPIPES    2
+#define NSEG      6
 
 float hash11(float n){ return fract(sin(n * 78.233) * 43758.5453); }
 

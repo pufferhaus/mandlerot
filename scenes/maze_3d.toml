@@ -1,5 +1,6 @@
 name = "maze_3d"
 display_name = "3D Maze"
+internal_resolution = "280x190"
 
 [[params]]
 slot = 0

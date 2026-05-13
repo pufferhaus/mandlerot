@@ -1,17 +1,33 @@
 # Append to /boot/firmware/config.txt for mandleROT.
 
-# composite NTSC output
-enable_tvout=1
+# composite NTSC output via vc4 KMS (Bookworm). The legacy enable_tvout=1
+# is ignored under KMS; composite=1 on the vc4 overlay is the supported path.
+# install.sh appends ",composite=1" to the existing dtoverlay=vc4-kms-v3d line.
 sdtv_mode=0
 sdtv_aspect=1
 disable_overscan=1
 
-# disable HDMI to save power and avoid driver fighting
-hdmi_blanking=2
-
-# SPI for status display
+# SPI bus for the status panel.
 dtparam=spi=on
+
+# MPI3501 / generic 3.5" SPI ILI9486 status panel via fbtft kernel driver.
+# `rotate=0` keeps the panel in native portrait (320x480); the userspace
+# code does software 90° rotation when blitting (kernel rotate has known
+# addressing bugs on this clone). `bgr=1` is set even though the channel
+# response is non-standard — see status::pi for the swap_rb565 + theme
+# tuning that compensates for what the panel actually produces.
+dtoverlay=fbtft,spi0-0,ili9486,reset_pin=25,dc_pin=24,led_pin=18,width=320,height=480,rotate=0,bgr=1,speed=32000000,fps=30
 
 # tighten boot
 disable_splash=1
 boot_delay=0
+
+# GPU overclock disabled — every Pi 3B+ unit we tested hit the soft
+# temperature limit (default 60°C) within ~1 min under load, which
+# silently killed composite output. Per-scene render_scale + shader
+# trims carry the FPS budget without OC.
+#
+# Raise the soft temp threshold from default 60°C → 70°C so transient
+# heat spikes don't pause the V3D core. Still well under the 85°C
+# hard limit.
+temp_soft_limit=70

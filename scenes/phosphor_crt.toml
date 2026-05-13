@@ -1,5 +1,6 @@
 name = "phosphor_crt"
 display_name = "Phosphor CRT"
+internal_resolution = "720x480"
 
 [[params]]
 slot = 0

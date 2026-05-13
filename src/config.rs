@@ -37,6 +37,12 @@ pub struct RenderConfig {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    #[serde(default = "default_render_scale")]
+    pub render_scale: f32,
+}
+
+fn default_render_scale() -> f32 {
+    1.0
 }
 
 #[derive(Debug, Clone, Deserialize)]

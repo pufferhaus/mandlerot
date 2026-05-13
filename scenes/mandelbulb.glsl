@@ -11,7 +11,7 @@ float DE(vec3 p) {
     vec3 z = p;
     float dr = 1.0;
     float r = 0.0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 4; i++) {
         r = length(z);
         if (r > 2.0) break;
         // Polar conversion — clamp for GLES precision safety
@@ -55,11 +55,11 @@ void main() {
     float t = 0.0;
     float hit = 0.0;
     float escape = 0.0;
-    for (int j = 0; j < 64; j++) {
+    for (int j = 0; j < 48; j++) {
         if (j >= steps) break;
         vec3 p = ro + rd * t;
         float d = DE(p);
-        if (d < 0.001) {
+        if (d < 0.003) {
             hit = 1.0;
             escape = float(j) / float(steps);
             break;
@@ -73,14 +73,16 @@ void main() {
         return;
     }
 
-    // Palette: escape count + audio hue drift + slow BPM-locked drift
     float audio_drift = u_audio.x * 0.15;
     float bpm_drift = u_time * bpm / (60.0 * 32.0);
     float col_t = escape + hue + audio_drift + bpm_drift + u_beat * 0.05;
     vec3 col = 0.5 + 0.5 * cos(6.2831 * (col_t + vec3(0.0, 0.33, 0.66)));
-    // Ambient shading: farther hits are dimmer
-    float shade = 1.0 - clamp(t / 6.0, 0.0, 0.7);
+    // Mild distance shading — keeps depth cue but never darker than 80%.
+    float shade = 1.0 - clamp(t / 6.0, 0.0, 0.2);
     col *= shade;
+    // Lift floor + boost gain so colors punch on a CRT.
+    col = col * 0.7 + 0.3;
+    col *= 1.15;
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
