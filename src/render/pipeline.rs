@@ -31,6 +31,7 @@ pub struct SceneProgram {
     u_trigger: Option<glow::UniformLocation>,
     u_bpm: Option<glow::UniformLocation>,
     u_params: [Option<glow::UniformLocation>; 9],
+    u_video_uv_scale: Option<glow::UniformLocation>,
 }
 
 /// Cached uniform locations for the single blend program.
@@ -68,6 +69,16 @@ pub struct Pipeline {
     /// up-front (zeros) so binding is always valid; main loop refreshes
     /// content each frame via `upload_audio_history`.
     audio_history_texture: Option<glow::Texture>,
+    /// Persistent video texture bound to TEXTURE3. Created up-front (zeros)
+    /// so sampling is always valid; `upload_video_if_new` writes a sub-rect
+    /// per capture frame. See roadmap video-input task 7.
+    video_texture: Option<glow::Texture>,
+    /// Last `VideoFrame::seq` actually uploaded to `video_texture`. Used to
+    /// skip the GL upload when capture hasn't produced a new frame.
+    last_uploaded_seq: u64,
+    /// Capture handle. `None` until `attach_video_handle` is called from
+    /// `main.rs`; once attached, `upload_video_if_new` pushes frames to TU3.
+    video_handle: Option<crate::video::VideoHandle>,
     /// Post-FX chain. Empty by default; populated via `postfx_load_dir`.
     /// When any pass in the chain is enabled, the blend output is rerouted
     /// into the chain's input FBO and the last enabled pass writes to the
@@ -116,15 +127,22 @@ impl Pipeline {
         let blend = resolve_blend_uniforms(&gl, blend_program);
         let quad_vao = create_quad_vao(&gl)?;
         let audio_history_texture = create_audio_history_texture(&gl);
+        let video_texture = create_video_texture(&gl);
         let postfx = PostFx::new(gl.clone(), width, height)?;
         // One-time GL state setup that holds for the lifetime of the
         // process: bind the unit-2 audio history texture so it's always
-        // there for scenes to sample, and bind the quad VAO once since
-        // every draw in this pipeline uses the same single quad. Skipping
-        // these per-frame saves ~6 GL calls each render tick.
+        // there for scenes to sample, the unit-3 video texture (same
+        // reason), and the quad VAO once since every draw in this pipeline
+        // uses the same single quad. Skipping these per-frame saves ~6 GL
+        // calls each render tick.
         unsafe {
             if let Some(tex) = audio_history_texture {
                 gl.active_texture(glow::TEXTURE2);
+                gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                gl.active_texture(glow::TEXTURE0);
+            }
+            if let Some(tex) = video_texture {
+                gl.active_texture(glow::TEXTURE3);
                 gl.bind_texture(glow::TEXTURE_2D, Some(tex));
                 gl.active_texture(glow::TEXTURE0);
             }
@@ -145,8 +163,18 @@ impl Pipeline {
             pi_gen,
             overlay_program: None,
             audio_history_texture,
+            video_texture,
+            last_uploaded_seq: 0,
+            video_handle: None,
             postfx,
         })
+    }
+
+    /// Attach the video capture handle. Frames flow into TU3 on subsequent
+    /// `frame()` calls. Setting `None` reverts to the all-zero placeholder.
+    pub fn attach_video_handle(&mut self, handle: Option<crate::video::VideoHandle>) {
+        self.video_handle = handle;
+        self.last_uploaded_seq = 0;
     }
 
     /// Load every paired `<dir>/*.{glsl,toml}` as a post-FX pass. Safe to call
@@ -190,6 +218,70 @@ impl Pipeline {
         }
     }
 
+    /// Upload the latest video frame to TU3 if its seq differs from the
+    /// last-uploaded one. Cheap when idle: one atomic load + one u64
+    /// compare. Also refreshes the `Stale` status on the handle — same
+    /// per-frame call covers both.
+    pub fn upload_video_if_new(&mut self) {
+        let Some(handle) = self.video_handle.as_ref() else {
+            return;
+        };
+        handle.refresh_stale();
+        let Some(tex) = self.video_texture else {
+            return;
+        };
+        let frame = handle.latest_frame();
+        if frame.seq == self.last_uploaded_seq {
+            return;
+        }
+        let w = frame.width.min(VIDEO_TEX_WIDTH) as i32;
+        let h = frame.height.min(VIDEO_TEX_HEIGHT) as i32;
+        // Guard against a truncated buffer — e.g. a 1×1 placeholder where
+        // `rgba.len() == 4` but `width == 1`. `tex_sub_image_2d` would read
+        // past the slice end if w*h*4 > rgba.len().
+        let need = (w as usize) * (h as usize) * 4;
+        if frame.rgba.len() < need || w <= 0 || h <= 0 {
+            self.last_uploaded_seq = frame.seq;
+            return;
+        }
+        unsafe {
+            self.gl.active_texture(glow::TEXTURE3);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                0,
+                0,
+                w,
+                h,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(&frame.rgba),
+            );
+            self.gl.active_texture(glow::TEXTURE0);
+        }
+        self.last_uploaded_seq = frame.seq;
+    }
+
+    /// Compute the `(width/tex_w, height/tex_h)` UV scale for the most
+    /// recent video frame. Scenes sample as `texture2D(u_video, v_uv *
+    /// u_video_uv_scale)` so the unused tail of the 1280×720 texture
+    /// never aliases into the image. Returns `(1.0, 1.0)` when no handle
+    /// is attached (texture is all-zero anyway, so scale is moot).
+    pub fn video_uv_scale(&self) -> (f32, f32) {
+        let Some(handle) = self.video_handle.as_ref() else {
+            return (1.0, 1.0);
+        };
+        let frame = handle.latest_frame();
+        let sx = (frame.width as f32 / VIDEO_TEX_WIDTH as f32).clamp(0.0, 1.0);
+        let sy = (frame.height as f32 / VIDEO_TEX_HEIGHT as f32).clamp(0.0, 1.0);
+        if sx <= 0.0 || sy <= 0.0 {
+            (1.0, 1.0)
+        } else {
+            (sx, sy)
+        }
+    }
+
     /// Index of the FBO holding the most recently rendered frame for layer A.
     pub fn front_a(&self) -> usize {
         self.front_a
@@ -218,6 +310,10 @@ impl Pipeline {
             let loc_aud = self.gl.get_uniform_location(new_prog, "u_audio_history");
             if loc_aud.is_some() {
                 self.gl.uniform_1_i32(loc_aud.as_ref(), 2);
+            }
+            let loc_video = self.gl.get_uniform_location(new_prog, "u_video");
+            if loc_video.is_some() {
+                self.gl.uniform_1_i32(loc_video.as_ref(), 3);
             }
         }
         if let Some(old) = self.scene_programs.insert(name.to_string(), cached) {
@@ -332,6 +428,10 @@ impl Pipeline {
             if let Some(loc) = &sp.u_bpm {
                 self.gl.uniform_1_f32(Some(loc), state.tap_tempo_bpm);
             }
+            if let Some(loc) = &sp.u_video_uv_scale {
+                let (vsx, vsy) = self.video_uv_scale();
+                self.gl.uniform_2_f32(Some(loc), vsx, vsy);
+            }
             let slots = params.effective_slot_values(&state.audio_bands, state.audio_bypass);
             for (i, v) in slots.iter().enumerate() {
                 if let Some(loc) = &sp.u_params[i] {
@@ -392,6 +492,9 @@ impl Pipeline {
         default_fb_w: u32,
         default_fb_h: u32,
     ) -> Result<()> {
+        // Push a fresh capture frame into TU3 if the seq advanced. No-op
+        // when no handle is attached or when seq matches the last upload.
+        self.upload_video_if_new();
         // Layer-skip optimization: blend pass mixes A and B by xfade. When a
         // layer's weight is zero, its frame contributes nothing — skip its
         // scene shader. Threshold below 1/255 since the blend output is 8-bit.
@@ -577,6 +680,7 @@ fn resolve_scene_uniforms(gl: &glow::Context, program: glow::Program) -> ScenePr
         u_trigger: loc("u_trigger"),
         u_bpm: loc("u_bpm"),
         u_params,
+        u_video_uv_scale: loc("u_video_uv_scale"),
     }
 }
 
@@ -722,6 +826,54 @@ fn create_audio_history_texture(gl: &glow::Context) -> Option<glow::Texture> {
     }
 }
 
+/// Persistent video texture dims. The capture thread writes a sub-rect of
+/// up to `width × height` pixels; scenes sample with `v_uv *
+/// u_video_uv_scale` so the unused tail never aliases into the image.
+pub const VIDEO_TEX_WIDTH: u32 = 1280;
+pub const VIDEO_TEX_HEIGHT: u32 = 720;
+
+fn create_video_texture(gl: &glow::Context) -> Option<glow::Texture> {
+    unsafe {
+        let tex = gl.create_texture().ok()?;
+        gl.active_texture(glow::TEXTURE3);
+        gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+        let zeros = vec![0u8; (VIDEO_TEX_WIDTH * VIDEO_TEX_HEIGHT * 4) as usize];
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            VIDEO_TEX_WIDTH as i32,
+            VIDEO_TEX_HEIGHT as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            Some(&zeros),
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_S,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_T,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.active_texture(glow::TEXTURE0);
+        Some(tex)
+    }
+}
+
 #[cfg(test)]
 #[cfg(feature = "desktop")]
 mod tests {
@@ -734,6 +886,20 @@ mod tests {
     #[test]
     fn audio_history_constant_matches_audio_module() {
         assert_eq!(AUDIO_HISTORY_LEN, crate::audio::history::HISTORY_LEN);
+    }
+
+    #[test]
+    fn video_uv_scale_math_matches_frame_over_tex() {
+        // We can't easily construct a Pipeline without GL, so verify the
+        // scale math against the public texture-size constants. Capture
+        // commonly delivers 720×480 (composite-NTSC class); the resulting
+        // UV scale lets scenes sample the live sub-rect cleanly.
+        let frame_w = 720u32;
+        let frame_h = 480u32;
+        let sx = frame_w as f32 / super::VIDEO_TEX_WIDTH as f32;
+        let sy = frame_h as f32 / super::VIDEO_TEX_HEIGHT as f32;
+        assert!((sx - 720.0 / 1280.0).abs() < 1e-4);
+        assert!((sy - 480.0 / 720.0).abs() < 1e-4);
     }
 
     #[test]
