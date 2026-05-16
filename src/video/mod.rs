@@ -158,6 +158,14 @@ impl VideoHandle {
     }
 }
 
+#[cfg(feature = "video")]
+pub use capture::start_capture;
+
+#[cfg(not(feature = "video"))]
+pub fn start_capture(_prefs: VideoPrefs) -> VideoHandle {
+    VideoHandle::stub()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
