@@ -128,6 +128,26 @@ pub fn load_lut_png(gl: &glow::Context, path: &Path) -> Result<glow::Texture> {
     upload_lut_texture(gl, &rgba)
 }
 
+/// Enumerate `*.png` files directly inside `<dir>`, sorted lexically.
+/// Non-existent dir → empty Vec (not an error).
+pub fn scan_lut_paths(dir: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<_> = rd
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("png"))
+                .unwrap_or(false)
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 /// Resolve a raw param-slot value to a valid index into a LUT vector.
 /// Returns None if there are zero LUTs. Clamps non-finite, negative,
 /// and over-large values to `[0, len-1]`.
@@ -220,5 +240,25 @@ mod tests {
     #[test]
     fn pick_lut_index_handles_nan() {
         assert_eq!(pick_lut_index(f32::NAN, 3), Some(0));
+    }
+
+    #[test]
+    fn scan_lut_paths_returns_empty_for_missing_dir() {
+        let p = std::path::PathBuf::from("/nope/does/not/exist/anywhere");
+        assert!(scan_lut_paths(&p).is_empty());
+    }
+
+    #[test]
+    fn scan_lut_paths_finds_pngs_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["zeta.png", "alpha.png", "ignore.txt", "beta.PNG"] {
+            std::fs::write(tmp.path().join(name), b"x").unwrap();
+        }
+        let got = scan_lut_paths(tmp.path());
+        let names: Vec<String> = got
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["alpha.png", "beta.PNG", "zeta.png"]);
     }
 }

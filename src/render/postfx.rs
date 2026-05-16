@@ -182,6 +182,34 @@ impl PostFx {
                 Err(e) => tracing::warn!("postfx '{name}': {e}; skipping"),
             }
         }
+
+        // Populate lut_textures for the "lut" pass, if present.
+        let luts_dir = dir.join("luts");
+        let lut_paths = crate::render::lut::scan_lut_paths(&luts_dir);
+        if let Some(idx) = self.find("lut") {
+            // Drop the old textures explicitly — Drop on PostFx runs only at the end
+            // of process lifetime; we'd leak GL handles on every reload otherwise.
+            unsafe {
+                for tex in &self.passes[idx].lut_textures {
+                    self.gl.delete_texture(*tex);
+                }
+            }
+            let mut new_textures = Vec::with_capacity(lut_paths.len());
+            for p in &lut_paths {
+                // &*self.gl derefs Arc<glow::Context> → &glow::Context as the loader expects.
+                match crate::render::lut::load_lut_png(&*self.gl, p) {
+                    Ok(t) => new_textures.push(t),
+                    Err(e) => tracing::warn!("LUT load skipped {}: {e}", p.display()),
+                }
+            }
+            tracing::info!(
+                "postfx: lut pass attached {} LUT(s) from {}",
+                new_textures.len(),
+                luts_dir.display()
+            );
+            self.passes[idx].lut_textures = new_textures;
+        }
+
         self.refresh_summary();
         Ok(())
     }
@@ -432,7 +460,9 @@ impl PostFx {
     fn refresh_summary(&mut self) {
         self.summary_cache.clear();
         let mut first = true;
-        for p in self.passes.iter().filter(|p| p.enabled) {
+        for p in self.passes.iter().filter(|p| {
+            p.enabled && !(p.name == "lut" && p.lut_textures.is_empty())
+        }) {
             if !first {
                 self.summary_cache.push('+');
             }
