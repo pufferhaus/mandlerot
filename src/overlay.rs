@@ -137,7 +137,8 @@ mod tests {
     fn strip_text_includes_mode() {
         let s = SharedState::from_initial(&lib(), "plasma", "solid", 0.5, BlendMode::Mix).unwrap();
         let t = build_strip_text(&s);
-        assert!(t.contains("SCN"));
+        // Default-mode start is Param so the strip label reads "PRM".
+        assert!(t.contains("PRM"));
         assert!(t.contains("L:A"));
         assert!(t.contains("X=0.50"));
     }

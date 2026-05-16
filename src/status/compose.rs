@@ -476,9 +476,10 @@ mod tests {
     #[test]
     fn mode_label_is_not_inverted() {
         let g = state_to_grid(&PanelSnapshot::from_state(&state()), "", &SysMon::new(), None);
-        // "SCENE" still starts at col 8 but the inverted band was removed —
-        // it competed visually with the layer-header invert band below.
-        assert_eq!(g.at(0, 8).ch, 'S');
+        // Default-mode start is Param so the label at col 8 is "PARAM".
+        // The inverted band was removed — it competed visually with the
+        // layer-header invert band below.
+        assert_eq!(g.at(0, 8).ch, 'P');
         assert_eq!(g.at(0, 8).attr & ATTR_INVERSE, 0);
         assert!(g.at(0, 8).attr & ATTR_BRIGHT != 0);
     }

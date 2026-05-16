@@ -5,7 +5,7 @@ fps = 30
 render_scale = 0.33
 
 [initial]
-scene_a = "metaballs"
-scene_b = "mandelbulb"
+scene_a = "mandelbulb"
+scene_b = "solid"
 xfade = 0.5
 blend_mode = "mix"

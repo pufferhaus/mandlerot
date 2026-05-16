@@ -135,7 +135,7 @@ impl SharedState {
             time_secs: 0.0,
             audio_bands: [0.0; 5],
             trigger: 0.0,
-            active_mode: Mode::Scene,
+            active_mode: Mode::Param,
             active_layer: Layer::A,
             selected_param_a: 0,
             selected_param_b: 0,
@@ -292,10 +292,10 @@ mod tests_plan2 {
     use crate::scene::SceneMeta;
 
     #[test]
-    fn shared_state_starts_in_scene_mode_layer_a() {
+    fn shared_state_starts_in_param_mode_layer_a() {
         let lib = test_lib();
         let s = SharedState::from_initial(&lib, "solid", "solid", 0.0, BlendMode::Mix).unwrap();
-        assert_eq!(s.active_mode, Mode::Scene);
+        assert_eq!(s.active_mode, Mode::Param);
         assert_eq!(s.active_layer, Layer::A);
         assert_eq!(s.selected_param_a, 0);
         assert_eq!(s.selected_param_b, 0);

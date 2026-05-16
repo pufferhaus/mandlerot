@@ -65,19 +65,23 @@ impl Screen for SettingsScreen {
             g.write(row, 7, attr, e.label);
             g.write(row + 1, 7, ATTR_DIM, e.hint);
         }
-        draw_footer(g, "1-3 / Enter open   ^v cursor   Esc back");
+        draw_footer(g, "1-4 / Enter open   -/+ cursor   Bksp back");
     }
 
     fn handle_key(&mut self, key: &str, _ctx: &mut ScreenCtx) -> ScreenResult {
         match key {
             "Esc" | "Backspace" => ScreenResult::Pop,
-            "Up" => {
+            // Cursor movement. `Up`/`Down` are the desktop-keyboard path
+            // (winit src). The numpad-on-Pi has no arrow keys, so we also
+            // map the operator's `−`/`+` (which are XfadeMinus/Plus in
+            // live mode) and `NumLock` to cursor controls inside menus.
+            "Up" | "NumpadSubtract" | "NumLock" => {
                 if self.cursor > 0 {
                     self.cursor -= 1;
                 }
                 ScreenResult::Continue
             }
-            "Down" => {
+            "Down" | "NumpadAdd" => {
                 if (self.cursor as usize) + 1 < ENTRIES.len() {
                     self.cursor += 1;
                 }

@@ -284,39 +284,40 @@ mod tests {
     }
 
     #[test]
-    fn numlock_is_scene_cycle_active_previous() {
-        // NumLock is no longer a modifier — on the rotated pad it sits in
-        // the operator's primary-key zone and cycles to the previous scene
-        // on whichever layer is active.
+    fn previous_scene_lives_on_numpad_multiply() {
+        // The dead NumLock corner key got retired in favour of `*`
+        // (NumpadMultiply) for the previous-scene cycle action.
         let km = parsed();
         let s = dummy_state();
         assert_eq!(
-            km.lookup("NumLock", Modifier::None, &s),
+            km.lookup("NumpadMultiply", Modifier::None, &s),
             Some(Action::SceneCycleActive { dir: -1 })
         );
     }
 
     #[test]
-    fn backspace_is_scene_cycle_active_next() {
+    fn backspace_is_trigger() {
+        // Bksp moved to Trigger duty; the scene-cycle-next action it used
+        // to hold has no numpad-side replacement at the moment.
         let km = parsed();
         let s = dummy_state();
-        assert_eq!(
-            km.lookup("Backspace", Modifier::None, &s),
-            Some(Action::SceneCycleActive { dir: 1 })
-        );
+        assert_eq!(km.lookup("Backspace", Modifier::None, &s), Some(Action::Trigger));
     }
 
     #[test]
-    fn numpad000_modifier_cycles_other_layer_scenes() {
+    fn numpad000_modifier_overlays_blend_and_other_prev() {
         let km = parsed();
         let s = dummy_state();
+        // 000+* mirrors PREV-active to PREV-other.
+        assert_eq!(
+            km.lookup("NumpadMultiply", Modifier::Numpad000, &s),
+            Some(Action::SceneCycleOther { dir: -1 })
+        );
+        // 000+Bksp is the only numpad path to BlendCycle now that the
+        // unmodified `*` is repurposed.
         assert_eq!(
             km.lookup("Backspace", Modifier::Numpad000, &s),
-            Some(Action::SceneCycleOther { dir: 1 })
-        );
-        assert_eq!(
-            km.lookup("NumLock", Modifier::Numpad000, &s),
-            Some(Action::SceneCycleOther { dir: -1 })
+            Some(Action::BlendCycle)
         );
     }
 
@@ -393,16 +394,18 @@ mod tests {
 
 
     #[test]
-    fn enter_and_backslash_both_toggle_layer() {
+    fn enter_toggles_layer_backslash_advances_mode() {
         let km = parsed();
         let s = dummy_state();
         assert_eq!(
             km.lookup("NumpadEnter", Modifier::None, &s),
             Some(Action::ToggleLayer)
         );
+        // Backslash got repurposed from ToggleLayer to AdvanceMode; Enter
+        // alone still covers layer-toggle.
         assert_eq!(
             km.lookup("Backslash", Modifier::None, &s),
-            Some(Action::ToggleLayer)
+            Some(Action::AdvanceMode)
         );
     }
 }

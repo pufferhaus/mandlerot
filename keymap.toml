@@ -27,21 +27,21 @@ action = "AdvanceMode"
 key = "Esc"
 action = "Panic"
 
-# Scene cycle on whichever layer is currently active. On the rotated cheap
-# pad these two keys sit in the operator's primary-key zone:
-#   Backspace = next scene
-#   NumLock   = previous scene
-# Flip layers first (Enter / Backslash) if you want to cycle the other side.
+# Scene-cycle bindings on the rotated cheap pad. NumLock (corner key) is
+# physically dead on the production unit's firmware — it emits no evdev
+# events at all — so the previous-scene action moved to `*`
+# (NumpadMultiply). NEXT-scene cycling currently has no dedicated key on
+# the numpad; pair with Enter to toggle layers if you want the inactive
+# side first.
 [[binding]]
-key = "Backspace"
-action = "SceneCycle:active:1"
-[[binding]]
-key = "NumLock"
+key = "NumpadMultiply"
 action = "SceneCycle:active:-1"
 
+# Backslash on the keyboard now opens the next mode (Scene → Param →
+# Look). Layer-toggle still lives on Enter / NumpadEnter below.
 [[binding]]
 key = "Backslash"
-action = "ToggleLayer"
+action = "AdvanceMode"
 
 [[binding]]
 key = "NumpadEnter"
@@ -168,14 +168,21 @@ action = "XfadePlus"
 key = "N"
 action = "Trigger"
 [[binding]]
-key = "NumpadDivide"
+key = "Backspace"
 action = "Trigger"
 [[binding]]
 key = "M"
 action = "BlendCycle"
+
+# Scene NEXT on the numpad sits on `/`. Paired with `*` (PREV) on the
+# same column of the rotated pad so forward/back scrubbing is one-finger.
 [[binding]]
-key = "NumpadMultiply"
-action = "BlendCycle"
+key = "NumpadDivide"
+action = "SceneCycle:active:1"
+[[binding]]
+key = "NumpadDivide"
+modifier = "Numpad000"
+action = "SceneCycle:other:1"
 [[binding]]
 key = "F"
 action = "FreezeToggle"
@@ -216,18 +223,18 @@ key = "NumpadDecimal"
 modifier = "Numpad000"
 action = "OpenMenu:Settings"
 
-# `000`-held scene cycle on the OTHER layer (mirror of the unmodified
-# Backspace / NumLock SceneCycleActive bindings). Lets the operator
-# pre-select the next-up scene on the inactive layer without first toggling
-# active.
+# `000`-held overlays. `000`+`*` mirrors PREV-active to PREV-other so the
+# operator can scrub the inactive layer back without first toggling which
+# layer is active. `000`+`Bksp` cycles blend mode — the only numpad-side
+# path to BlendCycle now that the unmodified `*` is repurposed.
+[[binding]]
+key = "NumpadMultiply"
+modifier = "Numpad000"
+action = "SceneCycle:other:-1"
 [[binding]]
 key = "Backspace"
 modifier = "Numpad000"
-action = "SceneCycle:other:1"
-[[binding]]
-key = "NumLock"
-modifier = "Numpad000"
-action = "SceneCycle:other:-1"
+action = "BlendCycle"
 
 # `000+5` (centre digit, hard to hit by accident) resets every param on the
 # active layer to scene defaults. Useful in PARAM mode when a slot has

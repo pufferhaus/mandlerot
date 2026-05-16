@@ -303,12 +303,15 @@ mod tests {
     fn advance_mode_cycles_three_modes() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
-        apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
+        // Default-mode start is Param so the cycle order from cold boot is
+        // Param → Look → Scene → Param.
         assert_eq!(s.active_mode, Mode::Param);
         apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
         assert_eq!(s.active_mode, Mode::Look);
         apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
         assert_eq!(s.active_mode, Mode::Scene);
+        apply(&Action::AdvanceMode, &mut s, &lib).unwrap();
+        assert_eq!(s.active_mode, Mode::Param);
     }
 
     #[test]
@@ -324,6 +327,7 @@ mod tests {
     fn slot_in_scene_mode_uses_explicit_binding_over_alphabetical() {
         let lib = three_scenes(); // alpha, beta, gamma alphabetical
         let mut s = base_state(&lib);
+        s.active_mode = Mode::Scene;
         s.slot_bindings.set(1, Some("gamma".into()));
         apply(
             &Action::Slot {
@@ -343,6 +347,7 @@ mod tests {
     fn slot_in_scene_mode_falls_back_to_alphabetical_when_binding_missing() {
         let lib = three_scenes();
         let mut s = base_state(&lib);
+        s.active_mode = Mode::Scene;
         apply(
             &Action::Slot {
                 n: 2,
@@ -359,6 +364,7 @@ mod tests {
     fn slot_in_scene_mode_sets_scene_by_index() {
         let lib = three_scenes(); // alphabetical: alpha, beta, gamma
         let mut s = base_state(&lib);
+        s.active_mode = Mode::Scene;
         apply(
             &Action::Slot {
                 n: 3,
