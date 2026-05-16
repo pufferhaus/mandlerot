@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use glow::HasContext;
+
 use crate::error::{Error, Result};
 
 /// Decode a 256x16 RGB/RGBA PNG into a tightly-packed RGBA byte buffer
@@ -63,6 +65,63 @@ pub fn decode_lut_file(path: &Path) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     f.read_to_end(&mut bytes)?;
     decode_lut_png(&bytes)
+}
+
+/// Upload a 256x16 RGBA byte buffer to a freshly-allocated `glow::Texture`.
+/// Sampling state: `GL_NEAREST` in both axes (the LUT shader manually
+/// interpolates the B axis; bilinear would bleed across 16-pixel slices).
+///
+/// # Safety
+///
+/// Caller must have a current GL context. The returned texture is owned
+/// by the caller — they're responsible for calling `gl.delete_texture` on it.
+pub fn upload_lut_texture(gl: &glow::Context, rgba: &[u8]) -> Result<glow::Texture> {
+    assert_eq!(rgba.len(), 256 * 16 * 4, "LUT buffer must be 256*16*4 bytes");
+    unsafe {
+        let tex = gl
+            .create_texture()
+            .map_err(|e| Error::Backend(format!("LUT create_texture: {e}")))?;
+        gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            256,
+            16,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            Some(rgba),
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::NEAREST as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::NEAREST as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_S,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_T,
+            glow::CLAMP_TO_EDGE as i32,
+        );
+        gl.bind_texture(glow::TEXTURE_2D, None);
+        Ok(tex)
+    }
+}
+
+/// Convenience: decode + upload a LUT PNG file. Caller owns the texture.
+pub fn load_lut_png(gl: &glow::Context, path: &Path) -> Result<glow::Texture> {
+    let rgba = decode_lut_file(path)?;
+    upload_lut_texture(gl, &rgba)
 }
 
 #[cfg(test)]
