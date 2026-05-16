@@ -256,6 +256,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     let watcher = HotReloader::watch(&cli.scenes).context("hot watcher")?;
+    let postfx_watcher = match HotReloader::watch_postfx(&cli.postfx) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            tracing::warn!("postfx hot-reload disabled: {e}");
+            None
+        }
+    };
 
     let audio_atomic = Arc::new(AtomicAudio::new());
     let mut audio_stop = Arc::new(AtomicBool::new(false));
@@ -581,6 +588,25 @@ fn main() -> anyhow::Result<()> {
                 .filter(|n| !n.starts_with("__"))
                 .map(|s| s.to_string())
                 .collect();
+        }
+
+        // Hot-reload: postfx dir
+        if let Some(pw) = postfx_watcher.as_ref() {
+            let mut postfx_dirty = false;
+            while let Some(evt) = pw.try_recv() {
+                match evt {
+                    ReloadEvent::PostFxTouched { .. } | ReloadEvent::PostFxRemoved { .. } => {
+                        postfx_dirty = true;
+                    }
+                    _ => {}
+                }
+            }
+            if postfx_dirty {
+                match pipeline.postfx_load_dir(&cli.postfx) {
+                    Ok(()) => tracing::info!("postfx: hot-reload applied"),
+                    Err(e) => tracing::warn!("postfx: hot-reload failed: {e}"),
+                }
+            }
         }
 
         // Audio sample
