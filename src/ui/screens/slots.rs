@@ -107,11 +107,6 @@ fn digit_value(key: &str) -> u8 {
     if key.len() == 1 {
         return key.as_bytes()[0].wrapping_sub(b'0');
     }
-    if let Some(rest) = key.strip_prefix("Numpad") {
-        if rest.len() == 1 && rest.as_bytes()[0].is_ascii_digit() {
-            return rest.as_bytes()[0] - b'0';
-        }
-    }
     0
 }
 
@@ -241,6 +236,18 @@ mod tests {
         s.render(&mut g, &r_ctx(&scenes, &b, &audio));
         let label: String = (8..14).map(|c| g.at(4, c).ch).collect();
         assert_eq!(label, "plasma");
+    }
+
+    #[test]
+    fn numpad_digit_does_not_trigger_slot_jump() {
+        let mut s = SlotsScreen::new();
+        let scenes: Vec<String> = vec!["a".into(), "b".into()];
+        let mut b = SlotBindings::default();
+        let dir = std::path::PathBuf::from("/tmp");
+        let audio = audio_for_test();
+        let r = s.handle_key("Numpad3", &mut s_ctx(&scenes, &mut b, &dir, &audio));
+        assert!(matches!(r, ScreenResult::Continue), "Numpad3 must not push");
+        assert_eq!(cursor_of(&s), 0, "Numpad3 must not move the cursor");
     }
 
     #[test]
