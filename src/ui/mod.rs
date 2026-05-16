@@ -60,6 +60,30 @@ pub trait Screen: Send {
     fn handle_key(&mut self, key: &str, ctx: &mut ScreenCtx) -> ScreenResult;
 }
 
+/// Translate rotated-numpad keys into arrow strings before the screen
+/// stack sees them. The cheap production numpad is mounted rotated 90°
+/// CCW; from the operator's POV the centre cross of the 3×3 digit block
+/// is the natural arrow cluster:
+///
+/// ```text
+///   .  Up  .          physical:   .  6  .
+///  Lt  .  Rt                       8  .  2
+///   . Dn  .                        .  4  .
+/// ```
+///
+/// Only the four centre-cross keys are translated. Everything else
+/// (corners, digits 0/5, operators, non-numpad keys) passes through
+/// untouched.
+fn translate_numpad(key: &str) -> &str {
+    match key {
+        "Numpad6" => "Up",
+        "Numpad4" => "Down",
+        "Numpad8" => "Left",
+        "Numpad2" => "Right",
+        other => other,
+    }
+}
+
 #[derive(Default)]
 pub struct ScreenStack {
     stack: Vec<Box<dyn Screen>>,
@@ -96,6 +120,7 @@ impl ScreenStack {
         let Some(top) = self.stack.last_mut() else {
             return false;
         };
+        let key = translate_numpad(key);
         let result = top.handle_key(key, ctx);
         match result {
             ScreenResult::Continue => {}
@@ -241,5 +266,57 @@ mod tests {
         let mut ctx = empty_ctx(&scenes, &mut binds, &dir, &audio);
         let consumed = s.handle_key("Esc", &mut ctx);
         assert!(!consumed);
+    }
+
+    #[test]
+    fn numpad_translates_to_arrows() {
+        assert_eq!(translate_numpad("Numpad6"), "Up");
+        assert_eq!(translate_numpad("Numpad4"), "Down");
+        assert_eq!(translate_numpad("Numpad8"), "Left");
+        assert_eq!(translate_numpad("Numpad2"), "Right");
+    }
+
+    #[test]
+    fn translate_numpad_passes_through_everything_else() {
+        for k in [
+            "Numpad0", "Numpad1", "Numpad3", "Numpad5", "Numpad7", "Numpad9",
+            "NumpadEnter", "NumpadAdd", "NumpadSubtract", "NumpadDecimal",
+            "NumpadMultiply", "NumpadDivide", "Up", "Down", "Left", "Right",
+            "Enter", "Esc", "Backspace", "1", "6", "a",
+        ] {
+            assert_eq!(translate_numpad(k), k, "expected {k} to pass through");
+        }
+    }
+
+    #[test]
+    fn stack_translates_numpad6_to_up_for_top_screen() {
+        use std::sync::Mutex;
+        static LAST: Mutex<String> = Mutex::new(String::new());
+
+        struct Recorder;
+        impl Screen for Recorder {
+            fn render(&self, _g: &mut TextScreen, _c: &RenderCtx) {}
+            fn handle_key(&mut self, key: &str, _c: &mut ScreenCtx) -> ScreenResult {
+                *LAST.lock().unwrap() = key.to_string();
+                ScreenResult::Continue
+            }
+        }
+
+        *LAST.lock().unwrap() = String::new();
+        let mut s = ScreenStack::new();
+        s.open(Box::new(Recorder));
+
+        let mut binds = SlotBindings::default();
+        let scenes: Vec<String> = vec![];
+        let dir = std::path::PathBuf::from("/tmp");
+        let audio = AudioParams::new();
+        let mut ctx = empty_ctx(&scenes, &mut binds, &dir, &audio);
+
+        assert!(s.handle_key("Numpad6", &mut ctx));
+        assert_eq!(*LAST.lock().unwrap(), "Up");
+        assert!(s.handle_key("Numpad2", &mut ctx));
+        assert_eq!(*LAST.lock().unwrap(), "Right");
+        assert!(s.handle_key("Numpad5", &mut ctx));
+        assert_eq!(*LAST.lock().unwrap(), "Numpad5");
     }
 }
