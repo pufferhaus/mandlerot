@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 #[cfg(all(feature = "pi", target_os = "linux"))]
@@ -257,18 +258,22 @@ fn main() -> anyhow::Result<()> {
     let watcher = HotReloader::watch(&cli.scenes).context("hot watcher")?;
 
     let audio_atomic = Arc::new(AtomicAudio::new());
-    let audio_stop = Arc::new(AtomicBool::new(false));
+    let mut audio_stop = Arc::new(AtomicBool::new(false));
     let audio_history = mandlerot::audio::history::AudioHistory::new();
     // Pre-allocated scratch buffer that `AudioHistory::snapshot_into`
     // refills every frame. Sized to the fixed 1×320 RGBA8 texture
     // dimensions; never grows.
     let mut audio_history_scratch =
         vec![0u8; mandlerot::audio::history::HISTORY_LEN * 4];
-    let _audio_thread = if cli.replay.is_none() {
+    // Track the device name the audio thread was started with so we can detect
+    // changes from the AudioDeviceScreen picker and respawn the worker.
+    let mut current_audio_device: String = audio_params.device();
+    let mut audio_thread: Option<JoinHandle<()>> = if cli.replay.is_none() {
         Some(spawn_audio(
             audio_atomic.clone(),
             audio_params.clone(),
             audio_stop.clone(),
+            Some(current_audio_device.clone()),
         ))
     } else {
         // Replay mode: no live capture, so the audio thread doesn't run; treat
@@ -829,6 +834,34 @@ fn main() -> anyhow::Result<()> {
         }
         frame += 1;
 
+        // Once per second (~60 frames), check whether the operator selected a
+        // different capture device via F4 → Audio → Device. On change: stop
+        // the old worker, join it, then spawn a fresh worker with the new
+        // device. cpal stream-drop takes a few ms which briefly blocks the
+        // render loop — acceptable for an operator-initiated switch.
+        if cli.replay.is_none() && frame % 60 == 0 {
+            let now_dev = audio_params.device();
+            if now_dev != current_audio_device {
+                tracing::info!(
+                    "audio: device change '{}' -> '{}', respawning worker",
+                    current_audio_device,
+                    now_dev
+                );
+                audio_stop.store(true, Ordering::Relaxed);
+                if let Some(h) = audio_thread.take() {
+                    let _ = h.join();
+                }
+                audio_stop = Arc::new(AtomicBool::new(false));
+                audio_thread = Some(spawn_audio(
+                    audio_atomic.clone(),
+                    audio_params.clone(),
+                    audio_stop.clone(),
+                    Some(now_dev.clone()),
+                ));
+                current_audio_device = now_dev;
+            }
+        }
+
         let elapsed = frame_start.elapsed();
         fps_window_frames += 1;
         fps_window_render_us += elapsed.as_micros() as u64;
@@ -855,6 +888,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     audio_stop.store(true, Ordering::Relaxed);
+    if let Some(h) = audio_thread.take() {
+        let _ = h.join();
+    }
     status_handle.stop.store(true, Ordering::Relaxed);
     Ok(())
 }

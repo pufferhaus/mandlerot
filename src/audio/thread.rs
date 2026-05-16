@@ -86,9 +86,10 @@ pub fn spawn(
     atomic: Arc<AtomicAudio>,
     params: Arc<AudioParams>,
     stop: Arc<std::sync::atomic::AtomicBool>,
+    device: Option<String>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let stream = match CaptureStream::open_default() {
+        let stream = match CaptureStream::open_with_device(device.as_deref()) {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("audio: {e}; running without audio reactivity");
