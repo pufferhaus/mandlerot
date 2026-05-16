@@ -79,6 +79,10 @@ pub struct Pipeline {
     /// Capture handle. `None` until `attach_video_handle` is called from
     /// `main.rs`; once attached, `upload_video_if_new` pushes frames to TU3.
     video_handle: Option<crate::video::VideoHandle>,
+    /// One-shot flag so the "source frame exceeds texture dims" WARN only
+    /// fires once per process — otherwise an over-resolution camera would
+    /// spam the log every frame.
+    video_oversize_warned: bool,
     /// Post-FX chain. Empty by default; populated via `postfx_load_dir`.
     /// When any pass in the chain is enabled, the blend output is rerouted
     /// into the chain's input FBO and the last enabled pass writes to the
@@ -166,6 +170,7 @@ impl Pipeline {
             video_texture,
             last_uploaded_seq: 0,
             video_handle: None,
+            video_oversize_warned: false,
             postfx,
         })
     }
@@ -242,6 +247,26 @@ impl Pipeline {
         };
         let frame = handle.latest_frame();
         if frame.seq == self.last_uploaded_seq {
+            return;
+        }
+        if frame.width > VIDEO_TEX_WIDTH || frame.height > VIDEO_TEX_HEIGHT {
+            // Source resolution exceeds our 1280×720 texture; uploading would
+            // produce a row-stride-mismatched garbled image (tex_sub_image_2d
+            // would read the first w*h*4 bytes as a packed 1280×720 grid
+            // even though the source is laid out wider). Skip until capture
+            // re-opens at a smaller mode (or the texture grows in a future
+            // task).
+            if !self.video_oversize_warned {
+                tracing::warn!(
+                    "video frame {}x{} exceeds texture {}x{}; skipping upload",
+                    frame.width,
+                    frame.height,
+                    VIDEO_TEX_WIDTH,
+                    VIDEO_TEX_HEIGHT
+                );
+                self.video_oversize_warned = true;
+            }
+            self.last_uploaded_seq = frame.seq;
             return;
         }
         let w = frame.width.min(VIDEO_TEX_WIDTH) as i32;
@@ -847,7 +872,15 @@ fn create_video_texture(gl: &glow::Context) -> Option<glow::Texture> {
         let tex = gl.create_texture().ok()?;
         gl.active_texture(glow::TEXTURE3);
         gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-        let zeros = vec![0u8; (VIDEO_TEX_WIDTH * VIDEO_TEX_HEIGHT * 4) as usize];
+        // Initialise to opaque black (RGBA 0,0,0,255) — matches
+        // `VideoFrame::black_placeholder` so a scene that samples u_video
+        // before any capture frame lands sees the same colour as during a
+        // device-lost frame, rather than fully-transparent zero alpha.
+        let pixel_count = (VIDEO_TEX_WIDTH * VIDEO_TEX_HEIGHT) as usize;
+        let mut init_pixels = vec![0u8; pixel_count * 4];
+        for chunk in init_pixels.chunks_exact_mut(4) {
+            chunk[3] = 255;
+        }
         gl.tex_image_2d(
             glow::TEXTURE_2D,
             0,
@@ -857,7 +890,7 @@ fn create_video_texture(gl: &glow::Context) -> Option<glow::Texture> {
             0,
             glow::RGBA,
             glow::UNSIGNED_BYTE,
-            Some(&zeros),
+            Some(&init_pixels),
         );
         gl.tex_parameter_i32(
             glow::TEXTURE_2D,
