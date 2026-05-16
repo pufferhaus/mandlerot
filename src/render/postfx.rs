@@ -608,7 +608,19 @@ mod tests {
             assert!(p.exists(), "missing {}", p.display());
             let bytes = std::fs::read(&p).unwrap();
             assert_eq!(&bytes[0..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
-            crate::render::lut::decode_lut_png(&bytes).expect("baked LUT must decode");
+            let rgba = crate::render::lut::decode_lut_png(&bytes).expect("baked LUT must decode");
+            if name == "identity.png" {
+                // Spot-check the identity mapping. Strip layout:
+                //   x = blue_slice * 16 + r, y = g, channel = idx * 17.
+                let pixel = |x: usize, y: usize| {
+                    let base = (y * 256 + x) * 4;
+                    [rgba[base], rgba[base + 1], rgba[base + 2], rgba[base + 3]]
+                };
+                assert_eq!(pixel(0, 0),   [0,   0,   0,   255], "identity (0,0)");
+                assert_eq!(pixel(15, 0),  [255, 0,   0,   255], "identity (15,0)");
+                assert_eq!(pixel(0, 15),  [0,   255, 0,   255], "identity (0,15)");
+                assert_eq!(pixel(240, 0), [0,   0,   255, 255], "identity (240,0)");
+            }
         }
     }
 }

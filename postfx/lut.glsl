@@ -1,7 +1,9 @@
 // LUT colour-grade post-FX pass.
 // LUT is a 256x16 RGBA strip: 16 slices of 16x16 each.
 //   slice index = blue, x-within-slice = red, y = green.
-// Manually interpolate the B axis (NEAREST sampling on u_lut).
+// Manually interpolate the B axis. R and G are intentionally NEAREST-
+// quantized (16 steps each) — bilinear on u_lut would bleed across
+// slice boundaries. Visual fidelity at 256x16 is plenty for grading.
 
 uniform sampler2D u_lut;
 
@@ -19,6 +21,6 @@ vec3 sample_lut(vec3 c) {
 }
 
 void main() {
-    vec3 src = texture2D(u_prev, v_uv).rgb;
+    vec3 src = texture2D(u_input, v_uv).rgb;
     gl_FragColor = vec4(mix(src, sample_lut(src), u_param1), 1.0);
 }
