@@ -17,6 +17,10 @@ pub struct SceneMeta {
     pub min_pi_gen: Option<PiGen>,
     #[serde(default)]
     pub params: Vec<ParamDef>,
+    /// If true, dark pixels are treated as background by the chromakey output
+    /// pass (item 27). Defaults to false. Baked `__video__` sets this true.
+    #[serde(default)]
+    pub keyable: bool,
     /// Used by post-FX passes only — scenes ignore this. Lets a `postfx/*.toml`
     /// declare "ship this pass off by default" (e.g. Pixelate) without needing
     /// a separate metadata schema.

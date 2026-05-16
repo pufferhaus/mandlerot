@@ -36,7 +36,7 @@ impl SceneLibrary {
     /// filtering (desktop dev). See roadmap item 28a.
     pub fn load_dir_for_gen(dir: &Path, detected: PiGen) -> Result<Self> {
         let mut lib = SceneLibrary::default();
-        lib.inject_safe_scene();
+        lib.inject_baked_scenes();
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -104,11 +104,13 @@ impl SceneLibrary {
         self.scenes.insert(name.to_string(), scene);
     }
 
-    /// Inject the baked-in `__safe__` fallback scene. Called automatically by
-    /// `load_dir`. Used by PANIC and as a last-resort render target. Cannot be
-    /// removed via hot-reload (file watcher only sees disk).
-    pub fn inject_safe_scene(&mut self) {
-        let meta = SceneMeta::parse(
+    /// Inject the baked-in fallback scenes (`__safe__` SMPTE bars and
+    /// `__video__` live feed sampler). Called automatically by
+    /// `load_dir_for_gen`. Used by PANIC, by the operator binding
+    /// `__video__` to a slot, and as a last-resort render target.
+    /// Cannot be removed via hot-reload.
+    pub fn inject_baked_scenes(&mut self) {
+        let safe_meta = SceneMeta::parse(
             "name = \"__safe__\"\ndisplay_name = \"Safe Fallback\"\n",
             "<baked>",
         )
@@ -116,8 +118,22 @@ impl SceneLibrary {
         self.scenes.insert(
             "__safe__".to_string(),
             LoadedScene {
-                meta,
+                meta: safe_meta,
                 fragment_body: crate::render::shader::SAFE_SCENE.to_string(),
+                source_path: PathBuf::from("<baked>"),
+            },
+        );
+
+        let video_meta = SceneMeta::parse(
+            "name = \"__video__\"\ndisplay_name = \"Video In\"\nkeyable = true\n",
+            "<baked>",
+        )
+        .expect("baked video-scene meta must parse");
+        self.scenes.insert(
+            "__video__".to_string(),
+            LoadedScene {
+                meta: video_meta,
+                fragment_body: crate::render::shader::VIDEO_SCENE.to_string(),
                 source_path: PathBuf::from("<baked>"),
             },
         );
@@ -191,5 +207,17 @@ mod tests {
         let lib_dev = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Unknown).unwrap();
         assert!(lib_dev.get("future").is_some());
         assert_eq!(lib_dev.filtered_count(), 0);
+    }
+
+    #[test]
+    fn baked_video_scene_is_present_regardless_of_gen() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Empty dir — only baked scenes should be present.
+        let lib = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi3).unwrap();
+        assert!(lib.get("__safe__").is_some());
+        assert!(lib.get("__video__").is_some());
+        let v = lib.get("__video__").unwrap();
+        assert_eq!(v.meta.display_name.as_deref(), Some("Video In"));
+        assert_eq!(v.fragment_body, crate::render::shader::VIDEO_SCENE);
     }
 }
