@@ -18,6 +18,7 @@ toml = "0.8"
 glow = "0.14"
 notify = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
+png = "0.17"
 bytemuck = "1"
 rustfft = "6"
 cpal = "0.15"
