@@ -949,6 +949,7 @@ fn handle_reload(
 ) {
     let stem = match &evt {
         ReloadEvent::SceneTouched { stem } | ReloadEvent::SceneRemoved { stem } => stem.clone(),
+        ReloadEvent::PostFxTouched { .. } | ReloadEvent::PostFxRemoved { .. } => return,
     };
     if matches!(evt, ReloadEvent::SceneRemoved { .. }) {
         return;
