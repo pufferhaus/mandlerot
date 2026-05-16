@@ -253,7 +253,14 @@ impl PostFx {
         // Walk enabled passes. The chain always ends in a feedback fbo (not
         // scanout) so we can read it as `u_prev` next frame; a final blit
         // pass copies that fbo to the default framebuffer.
-        let enabled_count = self.passes.iter().filter(|p| p.enabled).count();
+        //
+        // A LUT pass with no textures on disk can never render — exclude it
+        // from both the count and the iteration so `is_last` is always set by
+        // a pass that actually draws and writes to `feedback[next_feedback]`.
+        let is_renderable = |p: &PostFxPass| -> bool {
+            p.enabled && !(p.name == "lut" && p.lut_textures.is_empty())
+        };
+        let enabled_count = self.passes.iter().filter(|p| is_renderable(p)).count();
         if enabled_count == 0 {
             return;
         }
@@ -273,23 +280,19 @@ impl PostFx {
         // The pipeline's quad VAO is bound once at startup; no need to
         // re-bind here.
         let mut seen = 0usize;
-        for pass in self.passes.iter().filter(|p| p.enabled) {
+        for pass in self.passes.iter().filter(|p| is_renderable(p)) {
             seen += 1;
             let is_last = seen == enabled_count;
             let input_idx = self.input_idx;
             let next_idx = 1 - input_idx;
-            // Resolved before any GL state mutation so we can `continue` cleanly.
+            // Pre-filter guarantees lut_textures is non-empty when name == "lut",
+            // so pick_lut_index always returns Some here.
             let lut_bind = if pass.name == "lut" {
                 let slots_preview = pass
                     .params
                     .effective_slot_values(&state.audio_bands, state.audio_bypass);
-                match crate::render::lut::pick_lut_index(slots_preview[0], pass.lut_textures.len()) {
-                    None => {
-                        // LUT pass enabled but no LUTs on disk — skip silently.
-                        continue;
-                    }
-                    Some(idx) => Some(pass.lut_textures[idx]),
-                }
+                crate::render::lut::pick_lut_index(slots_preview[0], pass.lut_textures.len())
+                    .map(|idx| pass.lut_textures[idx])
             } else {
                 None
             };
