@@ -162,6 +162,17 @@ action = "XfadeMinus"
 [[binding]]
 key = "NumpadAdd"
 action = "XfadePlus"
+# 000-held + numpad xfade keys = parameter step in PARAM mode. Outside
+# PARAM mode the underlying ParamMinus/ParamPlus actions are no-ops, so
+# accidental hits are harmless. Unmodified `+`/`-` (above) still drive xfade.
+[[binding]]
+key = "NumpadSubtract"
+modifier = "Numpad000"
+action = "ParamMinus"
+[[binding]]
+key = "NumpadAdd"
+modifier = "Numpad000"
+action = "ParamPlus"
 
 # Trigger / blend / freeze / tap-tempo / audio-bypass
 [[binding]]
