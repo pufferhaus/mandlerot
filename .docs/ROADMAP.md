@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
+- **2026-05-16** Video input (item 24) — new `src/video/` (nokhwa-backed capture thread, `ArcSwap<Arc<VideoFrame>>` handoff), `u_video` + `u_video_uv_scale` in the GLSL prelude (TU3), baked `__video__` scene, demo `video_glitch` scene, `VID:` status chip, F4 → Audio → Device picker for routing dongle audio. Continuous capture with 5s NoDevice retry + 1s stale threshold. Spec at `docs/superpowers/specs/2026-05-16-video-input-design.md`.
+- **2026-05-16** Pi-gen detect + per-scene caps (28a) — new `src/platform.rs` (`PiGen::detect`, env override), `min_pi_gen` filter on `SceneLibrary::load_dir_for_gen`, pipeline drops per-scene `internal_resolution` caps on Pi 5 / Unknown so previously down-scaled scenes scale up to native, `install.sh` writes per-gen `MANDLEROT_RENDER_SCALE` + skips `composite=1` on Pi 4/5. Scene-list menu surfaces "N visible / M hidden on PiX". 218 tests green.
 - **2026-05-15** Numpad menu arrows + `000+±` param chord — rotated pad now navigates menus via centre cross (`6/4/8/2` → U/D/L/R) and steps params with `000`-held xfade keys. Slots screen drops numpad digit-jump (was misaligned with rotation).
-- **2026-05-12** Post-FX phase 2: `PostFxScreen` (toggle + dive) and `PostFxParamScreen` (Up/Down picks param, Left/Right nudges 2% of range, `r` resets) wired into the F4 Settings menu. Eager-save to `<state_dir>/postfx.toml` on every mutation; load layers user overrides on top of each pass's `enabled_by_default`. Two new passes: Chromatic Aberration (distance-scaled RGB split) and Bayer Dither (4×4 ordered, 16-arm if-chain because GLSL ES 1.00 lacks array-constructor literals). 182 tests green.
-- **2026-05-12** Post-FX phase 1: `src/render/postfx.rs` (PostFx + 2-FBO ping-pong + per-pass `ParamMap`), `shaders/postfx_prelude.glsl`, three passes — Vignette (on), Grain (on), Pixelate (off). Pipeline reroutes blend → chain → swapchain only when at least one pass is enabled; empty chain = old fast path. Audio routing on post-FX params works for free via existing `effective_slot_values`. Memory cost on Pi 3B+: +2.64 MB.
 
 ## Design Notes
 
@@ -48,7 +48,7 @@ _(none currently tracked)_
 | 21 | Scene: BIOS POST scroll | ✅ | `scenes/bios_post.{glsl,toml}` |
 | 22 | Scene: Audio vectorscope | ✅ | `scenes/vectorscope.{glsl,toml}` |
 | 23 | Scene: Bayer 1-bit dither | ✅ | `scenes/bayer.{glsl,toml}` |
-| 24 | Composite video input (USB capture → live texture as a layer) | ☐ | `src/video/`, `src/render/pipeline.rs`, `src/state.rs` |
+| 24 | Composite video input (USB capture → live texture as a layer) | ✅ | `src/video/`, `src/render/pipeline.rs`, `src/state.rs` |
 | 25 | Additional blend modes — tier 1 (Overlay, HardLight, Lighten, Darken, Exclusion, Subtract, LinearBurn) | ✅ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
 | 25b | Blend modes tier 2 (SoftLight, ColorDodge, ColorBurn, Hue, Saturation, Color, Luminosity) | ✅ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
 | 26a | Post-FX phase 1: chain skeleton + Vignette/Grain/Pixelate passes (no UI, no persistence) | ✅ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `shaders/postfx_prelude.glsl`, `postfx/*.{glsl,toml}` |
@@ -57,7 +57,8 @@ _(none currently tracked)_
 | 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ☐ | `src/render/postfx.rs`, `postfx/{bloom,crt}.{glsl,toml}` |
 | 26d | Post-FX phase 4: per-Look post-FX (Look schema bump to v2) | ☐ | `src/preset/store.rs`, `src/apply.rs` |
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
-| 28 | Pi-generation autodetect + tiered shaders/defaults (Pi 3 / 4 / 5 capability classes; require hardware in hand to verify each tier) | ☐ | `src/platform.rs` (new), `src/render/pipeline.rs`, `src/scene/meta.rs`, `src/config.rs`, `scenes/**/*.toml`, `.docs/EFFECTS-CATALOG.md` |
+| 28a | Pi-gen detect + per-scene caps (PiGen runtime detect, `min_pi_gen` filter, ignore per-scene `internal_resolution` on Pi 5, install-time `render_scale` per gen, skip composite overlay on Pi 5) | ✅ | `src/platform.rs` (new), `src/scene/{meta,library}.rs`, `src/render/pipeline.rs`, `src/ui/screens/scene_list.rs`, `deploy/install.sh`, `src/main.rs` |
+| 28  | Pi 4+ shader headroom — opt-in `#version 300 es` prelude variant (`glsl_version` scene field auto-marks `min_pi_gen = Pi4`) + real Gaussian bloom postfx tier. Blocked on Pi 4 + Pi 5 hardware in hand. | ☐ | `src/render/shader.rs`, `src/render/postfx.rs`, `postfx/bloom.{glsl,toml}`, `.docs/bench-pi{4,5}.md` |
 
 Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on completion.
 

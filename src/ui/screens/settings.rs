@@ -166,6 +166,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
     fn r_ctx<'a>(
@@ -178,6 +179,9 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 

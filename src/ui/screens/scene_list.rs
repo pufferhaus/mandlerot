@@ -30,6 +30,17 @@ impl Screen for SceneListScreen {
         let title = format!("PICK SCENE -> slot {}", self.for_slot);
         draw_border(g, &title);
 
+        // Filter summary: only paint when at least one scene was dropped.
+        if ctx.filtered_scenes > 0 {
+            let line = format!(
+                "{} visible / {} hidden on {}",
+                ctx.scenes.len(),
+                ctx.filtered_scenes,
+                ctx.pi_gen.as_str(),
+            );
+            g.write(2, 3, ATTR_DIM, &line);
+        }
+
         if ctx.scenes.is_empty() {
             g.write(6, 4, ATTR_DIM, "(no scenes available)");
             draw_footer(g, "Esc back");
@@ -178,6 +189,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
     fn ctx_r<'a>(
@@ -190,6 +202,9 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 

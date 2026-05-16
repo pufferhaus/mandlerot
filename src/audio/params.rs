@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,10 @@ pub struct AudioParams {
     gain_himid: AtomicU32,
     gain_treble: AtomicU32,
     gain_mid: AtomicU32,
+    /// Substring of the desired cpal input-device name. Empty = host default.
+    /// Stored behind a mutex (String isn't atomic); touched rarely — once at
+    /// startup, on Settings-menu writes, and on a slow poll for hot-plug.
+    device: Mutex<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +44,10 @@ struct AudioParamsFile {
     /// (pre-5-band) load cleanly with the default 1.0 gain.
     #[serde(default = "default_gain")]
     gain_mid: f32,
+    /// cpal input-device name substring. Empty = host default. `#[serde(default)]`
+    /// keeps older audio.toml files (pre-device-field) loading cleanly.
+    #[serde(default)]
+    device: String,
 }
 
 pub const DEFAULT_NOISE_FLOOR: f32 = 8.0;
@@ -61,6 +69,7 @@ impl Default for AudioParamsFile {
             gain_himid: DEFAULT_GAIN,
             gain_treble: DEFAULT_GAIN,
             gain_mid: DEFAULT_GAIN,
+            device: String::new(),
         }
     }
 }
@@ -78,6 +87,7 @@ impl AudioParams {
             gain_himid: AtomicU32::new(f.gain_himid.to_bits()),
             gain_treble: AtomicU32::new(f.gain_treble.to_bits()),
             gain_mid: AtomicU32::new(f.gain_mid.to_bits()),
+            device: Mutex::new(f.device),
         })
     }
 
@@ -109,6 +119,7 @@ impl AudioParams {
             gain_himid: self.gain(2),
             gain_treble: self.gain(3),
             gain_mid: self.gain(4),
+            device: self.device(),
         };
         let body =
             toml::to_string_pretty(&f).map_err(|e| Error::Backend(format!("serialize: {e}")))?;
@@ -141,6 +152,14 @@ impl AudioParams {
             _ => &self.gain_treble,
         };
         f32::from_bits(a.load(Ordering::Relaxed))
+    }
+
+    pub fn device(&self) -> String {
+        self.device.lock().unwrap().clone()
+    }
+
+    pub fn set_device(&self, name: String) {
+        *self.device.lock().unwrap() = name;
     }
 
     pub fn set_gain(&self, band: usize, v: f32) {
@@ -190,6 +209,16 @@ mod tests {
         assert_eq!(q.noise_floor(), 12.0);
         assert_eq!(q.gain(0), 1.5);
         assert_eq!(q.gain(3), 0.5);
+    }
+
+    #[test]
+    fn audio_params_round_trip_with_device() {
+        let p = AudioParams::new();
+        p.set_device("Microphone (USB Video)".into());
+        let tmp = tempfile::tempdir().unwrap();
+        p.save(tmp.path()).unwrap();
+        let reloaded = AudioParams::load_or_default(tmp.path());
+        assert_eq!(reloaded.device(), "Microphone (USB Video)");
     }
 
     #[test]

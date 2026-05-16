@@ -6,6 +6,15 @@ pub const QUAD_VERT: &str = include_str!("../../shaders/quad.vert");
 pub const BLEND_FRAG: &str = include_str!("../../shaders/blend.glsl");
 pub const SAFE_SCENE: &str = include_str!("../../shaders/safe_scene.glsl");
 
+/// Baked `__video__` scene. Samples `u_video` directly through
+/// `u_video_uv_scale` so unused rect tail of the 1280×720 texture
+/// never aliases into the image. See roadmap item 24.
+pub const VIDEO_SCENE: &str = r#"
+void main() {
+    gl_FragColor = texture2D(u_video, v_uv * u_video_uv_scale);
+}
+"#;
+
 /// Combine the prelude with a user scene fragment shader body.
 pub fn assemble_scene_fragment(user_body: &str) -> String {
     let mut s = String::with_capacity(PRELUDE.len() + user_body.len() + 1);

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
+use crate::platform::PiGen;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SceneMeta {
@@ -9,8 +10,17 @@ pub struct SceneMeta {
     pub display_name: Option<String>,
     #[serde(default)]
     pub internal_resolution: Option<String>,
+    /// Minimum Pi generation required to render this scene. Absent = runs
+    /// everywhere. Scenes whose required gen exceeds the detected gen are
+    /// filtered out of `SceneLibrary::names()` at load time (see roadmap 28a).
+    #[serde(default)]
+    pub min_pi_gen: Option<PiGen>,
     #[serde(default)]
     pub params: Vec<ParamDef>,
+    /// If true, dark pixels are treated as background by the chromakey output
+    /// pass (item 27). Defaults to false. Baked `__video__` sets this true.
+    #[serde(default)]
+    pub keyable: bool,
     /// Used by post-FX passes only — scenes ignore this. Lets a `postfx/*.toml`
     /// declare "ship this pass off by default" (e.g. Pixelate) without needing
     /// a separate metadata schema.

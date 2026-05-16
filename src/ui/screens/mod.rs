@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod audio_device;
 pub mod postfx;
 pub mod scene_list;
 pub mod settings;

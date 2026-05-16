@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 #[cfg(all(feature = "pi", target_os = "linux"))]
@@ -119,8 +120,20 @@ fn main() -> anyhow::Result<()> {
         .init();
     let cli = Cli::parse();
 
+    let pi_gen = mandlerot::platform::detect();
+    tracing::info!("detected platform: {:?}", pi_gen);
+
     let cfg = Config::load(&cli.config).context("load config")?;
-    let mut library = SceneLibrary::load_dir(&cli.scenes).context("load scenes")?;
+    let mut library =
+        SceneLibrary::load_dir_for_gen(&cli.scenes, pi_gen).context("load scenes")?;
+    let filtered = library.filtered_count();
+    if filtered > 0 {
+        tracing::info!(
+            "scene filter: {} scene(s) hidden (require gen above {:?})",
+            filtered,
+            pi_gen,
+        );
+    }
     let keymap = KeyMap::load(&cli.keymap).context("load keymap")?;
     // One-time migration: rename legacy `presets.json` to the new `looks.json`
     // location if the new file is missing. Idempotent — runs every startup
@@ -174,7 +187,17 @@ fn main() -> anyhow::Result<()> {
     };
 
     let gl: Arc<glow::Context> = target.gl();
-    let scale = cfg.render.render_scale.clamp(0.25, 1.0);
+    // `MANDLEROT_RENDER_SCALE` is the per-host override written by the
+    // install-time `pi-gen.conf` systemd drop-in (Pi 3 → 0.33, Pi 4 → 0.66,
+    // Pi 5 → 1.0). It wins over `config.toml` so `make deploy` re-rsync
+    // can't clobber the per-host tier. Garbage values fall through to the
+    // shipped config value.
+    let base_scale = cfg.render.render_scale;
+    let scale = std::env::var("MANDLEROT_RENDER_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(base_scale)
+        .clamp(0.25, 1.0);
     let (scan_w, scan_h) = target.dimensions();
     let render_w = ((scan_w as f32 * scale).round() as u32).max(64);
     let render_h = ((scan_h as f32 * scale).round() as u32).max(64);
@@ -184,10 +207,22 @@ fn main() -> anyhow::Result<()> {
             scale, render_w, render_h, scan_w, scan_h
         );
     }
-    let mut pipeline = Pipeline::new(gl, render_w, render_h)?;
+    let mut pipeline = Pipeline::new_for_gen(gl, render_w, render_h, pi_gen)?;
     // Compile the baked safe-scene up front so PANIC always has a working
     // fallback even if the user's scene compile breaks.
     pipeline.upsert_scene("__safe__", library.require("__safe__")?)?;
+    // Compile the baked __video__ scene up front so GLSL errors surface at
+    // boot, not at the first slot bind. Parity with __safe__.
+    pipeline.upsert_scene("__video__", library.require("__video__")?)?;
+    // Start the video capture worker and hand the read-side to the pipeline.
+    // start_capture is non-blocking; the worker reports status via ArcSwap.
+    let video_prefs = mandlerot::video::VideoPrefs {
+        device: None,
+        target_width: 720,
+        target_height: 480,
+    };
+    let video = mandlerot::video::start_capture(video_prefs);
+    pipeline.attach_video_handle(Some(video));
     pipeline.upsert_scene(
         &state.layer_a.scene_name,
         library.require(&state.layer_a.scene_name)?,
@@ -223,18 +258,22 @@ fn main() -> anyhow::Result<()> {
     let watcher = HotReloader::watch(&cli.scenes).context("hot watcher")?;
 
     let audio_atomic = Arc::new(AtomicAudio::new());
-    let audio_stop = Arc::new(AtomicBool::new(false));
+    let mut audio_stop = Arc::new(AtomicBool::new(false));
     let audio_history = mandlerot::audio::history::AudioHistory::new();
     // Pre-allocated scratch buffer that `AudioHistory::snapshot_into`
     // refills every frame. Sized to the fixed 1×320 RGBA8 texture
     // dimensions; never grows.
     let mut audio_history_scratch =
         vec![0u8; mandlerot::audio::history::HISTORY_LEN * 4];
-    let _audio_thread = if cli.replay.is_none() {
+    // Track the device name the audio thread was started with so we can detect
+    // changes from the AudioDeviceScreen picker and respawn the worker.
+    let mut current_audio_device: String = audio_params.device();
+    let mut audio_thread: Option<JoinHandle<()>> = if cli.replay.is_none() {
         Some(spawn_audio(
             audio_atomic.clone(),
             audio_params.clone(),
             audio_stop.clone(),
+            Some(current_audio_device.clone()),
         ))
     } else {
         // Replay mode: no live capture, so the audio thread doesn't run; treat
@@ -525,6 +564,11 @@ fn main() -> anyhow::Result<()> {
             w.pet();
         }
 
+        // Snapshot capture status once per frame — cheap (ArcSwap load) and
+        // gives a stable value to thread through the input + render contexts
+        // and the panel snapshot below.
+        let video_status = pipeline.video_status();
+
         // Hot-reload
         let mut scenes_dirty = false;
         while let Some(evt) = watcher.try_recv() {
@@ -646,6 +690,7 @@ fn main() -> anyhow::Result<()> {
                     state_dir: &state_dir,
                     audio: &audio_params,
                     postfx: Some(&mut pipeline.postfx),
+                    video_status,
                 };
                 ui_stack.handle_key(&key, &mut ctx);
                 continue;
@@ -736,13 +781,18 @@ fn main() -> anyhow::Result<()> {
                 bindings: &state.slot_bindings,
                 audio: &audio_params,
                 postfx: Some(&pipeline.postfx),
+                filtered_scenes: filtered,
+                pi_gen,
+                video_status,
             };
             ui_stack.render_top(&rctx)
         } else {
             None
         };
+        let mut panel = mandlerot::status::snapshot::PanelSnapshot::from_state(&state);
+        panel.video_status = video_status;
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
-            panel: mandlerot::status::snapshot::PanelSnapshot::from_state(&state),
+            panel,
             menu_grid,
             postfx_summary: pipeline.postfx.summary_tag().to_string(),
             fps: if fps_have { Some(fps_smoothed) } else { None },
@@ -784,6 +834,34 @@ fn main() -> anyhow::Result<()> {
         }
         frame += 1;
 
+        // Once per second (~60 frames), check whether the operator selected a
+        // different capture device via F4 → Audio → Device. On change: stop
+        // the old worker, join it, then spawn a fresh worker with the new
+        // device. cpal stream-drop takes a few ms which briefly blocks the
+        // render loop — acceptable for an operator-initiated switch.
+        if cli.replay.is_none() && frame % 60 == 0 {
+            let now_dev = audio_params.device();
+            if now_dev != current_audio_device {
+                tracing::info!(
+                    "audio: device change '{}' -> '{}', respawning worker",
+                    current_audio_device,
+                    now_dev
+                );
+                audio_stop.store(true, Ordering::Relaxed);
+                if let Some(h) = audio_thread.take() {
+                    let _ = h.join();
+                }
+                audio_stop = Arc::new(AtomicBool::new(false));
+                audio_thread = Some(spawn_audio(
+                    audio_atomic.clone(),
+                    audio_params.clone(),
+                    audio_stop.clone(),
+                    Some(now_dev.clone()),
+                ));
+                current_audio_device = now_dev;
+            }
+        }
+
         let elapsed = frame_start.elapsed();
         fps_window_frames += 1;
         fps_window_render_us += elapsed.as_micros() as u64;
@@ -810,6 +888,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     audio_stop.store(true, Ordering::Relaxed);
+    if let Some(h) = audio_thread.take() {
+        let _ = h.join();
+    }
     status_handle.stop.store(true, Ordering::Relaxed);
     Ok(())
 }

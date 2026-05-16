@@ -1,0 +1,21 @@
+name = "video_glitch"
+display_name = "Video Glitch"
+
+[[params]]
+slot = 0
+name = "tear"
+min = 0.0
+max = 0.3
+default = 0.05
+curve = "linear"
+audio_route = "bass"
+audio_amount = 0.4
+audio_polarity = 1.0
+
+[[params]]
+slot = 1
+name = "bands"
+min = 4.0
+max = 240.0
+default = 60.0
+curve = "linear"

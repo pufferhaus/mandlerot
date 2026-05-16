@@ -21,6 +21,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = "1"
 rustfft = "6"
 cpal = "0.15"
+arc-swap = "1"
+nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation", "input-v4l", "input-msmf"], optional = true }
 embedded-graphics = "0.8"
 
 # desktop backend (default)
@@ -45,9 +47,10 @@ softbuffer = { version = "0.4", optional = true }
 coreaudio-sys = { version = ">=0.2.0, <0.2.17", default-features = false }
 
 [features]
-default = ["desktop"]
+default = ["desktop", "video"]
 desktop = ["dep:winit", "dep:glutin", "dep:glutin-winit", "dep:raw-window-handle", "dep:softbuffer"]
 pi = ["dep:khronos-egl", "dep:gbm", "dep:drm", "dep:evdev", "dep:memmap2", "dep:libc"]
+video = ["dep:nokhwa"]
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -19,5 +19,7 @@ uniform float u_param6;
 uniform float u_param7;
 uniform float u_param8;
 uniform sampler2D u_audio_history; // RGBA8 1x320: each row = one frame's bands (R=bass, G=lomid, B=himid, A=treble); v=0 oldest, v=1 newest.
+uniform sampler2D u_video;          // live external feed (1280x720 max RGBA8); empty = 1x1 black
+uniform vec2      u_video_uv_scale; // multiply v_uv by this to sample only the populated rect
 
 varying vec2 v_uv;

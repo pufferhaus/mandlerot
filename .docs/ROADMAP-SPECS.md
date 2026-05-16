@@ -491,154 +491,187 @@ Three layers, smallest → largest commitment:
 
 ---
 
-## 28. Pi-generation autodetect + tiered shader / default support
+## 28a. Pi-gen detect + per-scene caps (shippable slice)
 
-**Problem.** Current code targets a single hardware tier (Pi 3B+, VC4
-V3D 2.1, GLES 2.0). Every per-scene `internal_resolution`, every shader
-`#version 100` workaround, every default `render_scale`, every shader
-trim (mandelbulb DE iters 4, march cap 16, etc.) is calibrated to that
-one device. The Pi 4 (VC6, GLES 3.1, ~5× the per-pixel throughput) and
-Pi 5 (VC7, GLES 3.1 + Vulkan, ~20×) are obvious upgrade targets. Without
-detection we'd either ship one binary that wastes most of a Pi 5's GPU
-or maintain N build flavours by hand.
+**Goal.** Make Pi 3 / Pi 5 do the right thing automatically without
+shipping the adaptive auto-scale loop or bench-tuned per-gen scene
+tables. Two operator-visible outcomes:
 
-**Blocked on hardware.** Need a Pi 4 and Pi 5 in hand to measure real
-GPU throughput per scene and validate that the tiered defaults actually
-hit 30 fps. Don't ship defaults that haven't been benched on the device
-they target — same discipline that produced the current per-scene
-resolution table.
+1. **Pi 5 boots → every scene renders at native scanout.** The global
+   `render_scale` defaults to 1.0 (set at install time) AND per-scene
+   `internal_resolution` overrides (tuned for Pi 3 at e.g. `180×120`)
+   are ignored, so previously down-scaled scenes scale up to the Pi 5's
+   headroom.
+2. **Pi 3 boots → incompatible scenes hide from the menu.** Scenes
+   declaring `min_pi_gen = "Pi4"` or `"Pi5"` disappear from
+   `SceneCycle`, slot binding, and the scene-list picker. Slot toml
+   entries pointing at a filtered scene fall back gracefully.
 
 **Design.**
 
-- **`src/platform.rs`** — new module. `pub enum PiGen { Pi3, Pi4, Pi5,
-  Unknown }`. `pub fn detect() -> (PiGen, String)` reads
-  `/proc/device-tree/model` (matching on `"Raspberry Pi 3 Model …"` /
-  `"Raspberry Pi 4 Model …"` / `"Raspberry Pi 5 …"`), falls back to
-  `/proc/cpuinfo` `Revision` numeric mapping if the model string is
-  unavailable (some Pi distros strip it). Cache the result in a
-  `OnceCell`; log once at startup alongside the GL renderer line.
-  Returns `(PiGen::Unknown, raw_model_string)` on non-Pi systems
-  (desktop dev box) so calling code can fall back to "default tier".
+- **`src/platform.rs`** (new). `pub enum PiGen { Pi3, Pi4, Pi5, Unknown
+  }` with `Ord` so `>= Pi4` filtering reads naturally. `pub fn detect()
+  -> PiGen` reads `MANDLEROT_PI_GEN` env override first (values: `Pi3`,
+  `Pi4`, `Pi5`, anything else → Unknown), then
+  `/proc/device-tree/model` matching on `"Raspberry Pi 3"`, `"Raspberry
+  Pi 4"`, `"Raspberry Pi 5"`, else `PiGen::Unknown`. Cached in
+  `OnceCell`. Logged once at startup alongside the GL renderer string.
+  Pure-function `parse_model(&str) -> PiGen` for unit tests.
 
-- **Per-tier defaults** in `config.rs`. New `RenderConfig::auto_scale`
-  bool (default true). When true, the runtime overrides
-  `render.render_scale` based on `PiGen::detect`:
-  - Pi3 → 0.33 (current shipping value)
-  - Pi4 → 0.66
-  - Pi5 / Unknown → 1.0 (full scanout)
-  Explicit `render_scale = …` in config.toml overrides.
+- **`src/scene/meta.rs`** — add `pub min_pi_gen: Option<PiGen>` to
+  `SceneMeta` (serde-parsed from string). Scenes without the field
+  default to `None` ⇒ runs everywhere (most permissive). The field is
+  validated to be one of the known values; unknown strings warn + treat
+  as None.
 
-- **Per-scene `min_pi_gen`** in `SceneMeta`. New optional field:
+- **`src/scene/library.rs`** — `SceneLibrary::load_dir` takes the
+  detected `PiGen` (Default = Unknown ≡ no filtering). Scenes whose
+  `min_pi_gen` exceeds the detected gen are still parsed (so the file
+  watcher can re-evaluate on edit) but **dropped from `names()` and
+  `get()`**. Internal `filtered_count: usize` is exposed via
+  `filtered_for_gen() -> usize` for UI.
+
+- **`src/render/pipeline.rs`** — `Pipeline::new` takes the detected
+  `PiGen`. In `upsert_scene`, when `gen >= Pi5`, skip the
+  `scene_sizes.insert(...)` branch and instead always `remove()`. Per-
+  scene caps thus stop applying — Pi 5 layers always render at the
+  global render dims.
+
+- **`deploy/install.sh`** —
+  - Detect Pi gen from `/proc/device-tree/model` (or
+    `tr -d '\0' < /proc/device-tree/model`).
+  - On Pi 3 → leave existing `composite=1` overlay edit, write
+    `render_scale = 0.33` into the installed `config.toml` if absent.
+  - On Pi 4 → skip composite=1 (Pi 4 has no composite jack), write
+    `render_scale = 0.66`.
+  - On Pi 5 → skip composite=1 (Pi 5 has no composite jack), write
+    `render_scale = 1.0`.
+  - Edit is idempotent: only modify the active `render_scale = …` line
+    or append once.
+
+- **`src/ui/screens/scene_list.rs`** — header line under the title
+  shows `"N visible / M filtered on Pi3"` when `M > 0`. Pulled from
+  `SceneLibrary::filtered_for_gen()`.
+
+- **`src/main.rs`** — call `PiGen::detect()` once after `tracing_init`,
+  log it, pass into `SceneLibrary::load_dir` and `Pipeline::new`.
+
+**Out of scope (lives in item 28).**
+
+- `internal_resolution_by_gen` per-scene override tables.
+- `#version 300 es` prelude variant + `glsl_version` scene field.
+- Real Gaussian bloom (Pi 4+ postfx tier).
+- Auto-scale runtime fps-feedback loop.
+- Marking specific scenes with `min_pi_gen` (bench-and-tune work — none
+  of the 58 current scenes get a `min_pi_gen` value as part of 28a; the
+  field exists, but only future scenes that genuinely need Pi 4+ opt
+  in).
+
+**Tests.**
+
+- `platform::parse_model` returns `PiGen::Pi3` / `Pi4` / `Pi5` for the
+  three known device-tree model strings; `Unknown` for "Raspberry Pi 2
+  Model B Rev 1.1" and for the empty string.
+- `platform::detect_with_env` respects `MANDLEROT_PI_GEN=Pi5`.
+- `SceneMeta::parse` accepts `min_pi_gen = "Pi5"` and rejects bogus
+  values with a warning (falls back to None).
+- `SceneLibrary::load_dir` with detected `PiGen::Pi3` and a scene
+  declaring `min_pi_gen = "Pi5"` filters that scene out of `names()`;
+  with detected `PiGen::Pi5` keeps it.
+- `Pipeline::upsert_scene` with detected `PiGen::Pi5` does NOT populate
+  `scene_sizes` even when `internal_resolution = "180x120"` is set
+  (verify `layer_size_for` returns the global dims).
+
+**Verification.**
+
+- `cargo test --lib` green.
+- `cargo run -- --smoke-frames 2` green on desktop.
+- `MANDLEROT_PI_GEN=Pi5 cargo run -- --smoke-frames 2` green; logs
+  `PiGen::Pi5` and shows per-scene size overrides being ignored.
+- Manual: drop a scene with `min_pi_gen = "Pi5"` into `scenes/`, boot
+  with `MANDLEROT_PI_GEN=Pi3`, verify scene-list menu shows the new
+  count and the scene is unreachable from `SceneCycle`.
+
+---
+
+## 28. Pi 4+ shader headroom — GLES 3.x prelude + tiered post-FX
+
+**Status.** Scope narrowed after 28a shipped. Originally a sprawling
+"Pi-gen autodetect + tiered everything" item; the detect + filter +
+per-gen render_scale + per-scene cap-gating slice all landed in 28a.
+What remains is the work that genuinely needs newer GLES features or
+significantly more GPU budget than Pi 3 has — i.e. the parts that need
+Pi 4 + Pi 5 hardware in hand to bench.
+
+**Blocked on hardware.** Need a Pi 4 and Pi 5 to measure real GPU
+throughput per scene/pass before shipping a Pi-4+ codepath. Don't ship
+defaults that haven't been benched on the device they target — same
+discipline that produced the current per-scene resolution table.
+
+**What this item ships.**
+
+- **Opt-in `#version 300 es` prelude variant.** Keep `#version 100` as
+  the default for backwards compat; add a second prelude in
+  `src/render/shader.rs` for scenes that opt in via
   ```toml
-  min_pi_gen = "Pi4"   # or "Pi5", default "Pi3"
+  glsl_version = "300es"
   ```
-  At `SceneLibrary::load_dir` time, scenes whose `min_pi_gen` is above
-  the detected gen get **filtered out of the visible list** (still
-  loadable for testing via explicit name, but invisible to scene
-  cycling / slot binding / library iteration in production). UI shows
-  filtered count in the scene-list menu: `"38 visible / 12 unsupported
-  on Pi 3"`.
+  in scene toml. The library auto-marks any 300-es scene as
+  `min_pi_gen = "Pi4"` so the 28a filter keeps them off Pi 3. Unlocks
+  for those scenes: dynamic-bound loops, `switch`, `texture()`, integer
+  ops — lifts current raymarch step caps and fractal iter counts.
 
-- **Per-scene `internal_resolution_by_gen`** override (optional). Lets
-  a scene tune its target res per Pi:
-  ```toml
-  [internal_resolution_by_gen]
-  pi3 = "180x120"
-  pi4 = "480x320"
-  pi5 = "720x480"
-  ```
-  Falls back to the single `internal_resolution` key for scenes that
-  don't care. The current 53 tuned scenes get a one-shot migration.
+- **Real Gaussian bloom postfx pass** for Pi 4+. Two-pass
+  downsample/upsample + separable blur, needs 2–3 extra FBOs and
+  shader code that's overkill on Pi 3. Ship as
+  `postfx/bloom.{glsl,toml}` with `min_pi_gen = "Pi4"`; the existing
+  single-pass bloom approximation (when it exists) stays as the Pi 3
+  path. Same `min_pi_gen` filter mechanism that 28a built into
+  `SceneLibrary` extends to `PostFx::load_dir` here.
 
-- **GLES version gate.** Pi 4 and Pi 5 support GLES 3.x; some shader
-  features (dynamic-bound loops, `switch`, `texture()`, integer ops)
-  could let us simplify code and lift current ceilings (raymarch step
-  caps, fractal iter counts). Approach: keep `#version 100` as the
-  default shader prelude for backwards compat; add an opt-in
-  `#version 300 es` prelude variant; scenes declare `glsl_version =
-  "300es"` in their toml. Those scenes get auto-marked `min_pi_gen =
-  "Pi4"` so the filter step keeps them off Pi 3.
+- **Bench harness** prints detected `PiGen` per result line so
+  `--benchmark 60` dumps land in `.docs/bench-pi4.md` /
+  `.docs/bench-pi5.md` and inform any future `min_pi_gen` decisions.
 
-- **Postfx tiering.** Same `min_pi_gen` mechanism on postfx pass tomls.
-  Lets us ship a "real" Gaussian bloom (downsample → blur → upsample,
-  needs 2-3 extra fbos and shader code that's overkill on Pi 3) for
-  Pi 4+ while keeping the single-pass approximation as the Pi 3 path.
+**Files to touch.**
 
-- **Composite vs HDMI.** Independent of Pi gen but related: Pi 4 has
-  no native composite jack. The existing `find_display_connector`
-  HDMI-fallback logic already handles that — no change needed here,
-  just call it out in the test plan.
+- `src/render/shader.rs`: parse `glsl_version`, emit the 300-es
+  prelude variant when requested.
+- `src/scene/meta.rs`: optional `glsl_version` field; auto-bump
+  `min_pi_gen` to `"Pi4"` when "300es".
+- `src/render/postfx.rs`: honour `min_pi_gen` at `load_dir` time
+  (same shape as `SceneLibrary::load_dir_for_gen`).
+- New: `postfx/bloom.{glsl,toml}` with `min_pi_gen = "Pi4"`.
+- `src/main.rs` / bench harness: include `PiGen` in benchmark output.
+- `.docs/bench-pi4.md`, `.docs/bench-pi5.md`: bench dumps (new files).
 
-**Files to touch (estimated).**
+**Out of scope (explicitly cancelled by 28a).**
 
-- New: `src/platform.rs`, `src/platform/pi_gen.rs` if it grows.
-- `src/config.rs`: add `auto_scale` field + per-gen scale table.
-- `src/scene/meta.rs`: parse `min_pi_gen` + `internal_resolution_by_gen`
-  + `glsl_version` fields.
-- `src/scene/library.rs`: filter at load time by detected gen.
-- `src/render/shader.rs`: support `#version 300 es` prelude variant.
-- `src/render/pipeline.rs`: read auto-scaled render dims; route
-  per-gen scene size lookup.
-- `src/ui/screens/scene_list.rs`: surface filtered count.
-- `src/main.rs`: log Pi gen at startup.
-- `.docs/EFFECTS-CATALOG.md`: tag the more ambitious shaders (real-
-  time path tracer, 1k-particle systems, dense raymarch) with the
-  min-gen they require.
-- Possibly `scenes/**/*.toml`: add per-gen res overrides for scenes
-  that benefit. Big bench-and-tune pass, similar to the 53-scene tier
-  table from the Pi 3 work.
-
-**Open questions.**
-
-- **How to test without hardware?** Three viable paths:
-  (a) Borrow / rent. Pi 4s and Pi 5s are widely available.
-  (b) Run the binary on a Pi 4 emulator (QEMU has a Pi 4 model; perf
-  numbers won't be representative but the platform-detect code and
-  scene-filter logic can be verified end-to-end).
-  (c) Inject a `MANDLEROT_PI_GEN=Pi5` env override that bypasses
-  `/proc/device-tree/model` reading. Useful for dev box too. Ship
-  this regardless — it's a 5-line addition and makes the whole
-  feature testable on the desktop.
-
-- **Should the desktop dev binary (non-Pi feature flag) report a
-  meaningful tier?** Default to `PiGen::Unknown` → "max" tier. The
-  desktop GPU is overwhelmingly faster than any Pi; the only thing
-  that matters is the auto-scale and feature-filter behaviour, which
-  we want to verify on the dev box without owning hardware.
-
-- **Versioning / breaking changes for `scenes/*.toml`.** Existing
-  scenes have no `min_pi_gen` field — treat absent as `Pi3` (most
-  permissive). New scenes that genuinely need Pi 4+ must opt in.
-
-- **Bench harness reuse.** Extend `--benchmark` (already cycles every
-  scene through base / xfade50 / postfx / xfade50_heavy) to log the
-  detected `PiGen` in each result line. Run on each new Pi, dump the
-  csv into `.docs/bench-pi4.md` / `.docs/bench-pi5.md`. The per-gen
-  res tuning lives or dies on those numbers.
+- ~~Adaptive auto-scale fps loop.~~ Superseded by 28a's install-time
+  per-gen `MANDLEROT_RENDER_SCALE`. Runtime adaptive scaling pumps
+  visibly and clears `u_prev` on FBO resize (kills feedback scenes);
+  the operator wants predictable resolution, not stealth drops
+  mid-set. Manual notch via Settings chord stays an option if ever
+  needed, but not auto.
+- ~~`internal_resolution_by_gen` per-scene table.~~ Pi 5 ignores
+  per-scene caps entirely (28a), Pi 3 keeps the single
+  `internal_resolution` value, and Pi 4 isn't a deployment target —
+  the per-gen table would only matter if Pi 4 became one. Spec lives
+  here for reference; add it back if Pi 4 deployment becomes a goal.
+- ~~Per-gen `render_scale` table in `RenderConfig`.~~ Handled at
+  install time via the `pi-gen.conf` systemd drop-in. No runtime
+  table needed.
+- Vulkan path. Pi 5 supports Vulkan 1.3 but that's a render-backend
+  rewrite, not a tier task.
+- Auto-OC per gen. Deploy-time choice, not runtime.
 
 **Test plan (when hardware is in hand).**
 
-- Unit: `platform::detect` returns `PiGen::Pi3` for a known device-tree
-  model string; `PiGen::Pi5` for the Pi 5 string; `PiGen::Unknown` for
-  a fabricated unrecognised string.
-- Unit: `SceneLibrary::load_dir` with a scene declaring `min_pi_gen =
-  "Pi5"` and detected gen `Pi3` filters it out of the visible names
-  iterator. Detected gen `Pi5` keeps it.
-- Unit: `RenderConfig::auto_scale = true` with `PiGen::Pi4` produces
-  `render_scale = 0.66`; with explicit `render_scale = 0.5` in toml,
-  the explicit value wins.
-- Integration: cross-build, deploy, boot on each Pi gen, smoke
-  `--benchmark 60`, confirm no scene is below 30 fps in the base
-  phase. Document any scenes that need per-gen res tweaks.
-- Manual: switch `min_pi_gen` on a heavy scene to one tier above the
-  current device, restart, verify it disappears from the scene-list
-  menu and from `SceneCycle:active:+1` cycling.
-
-**Out of scope for this item.**
-
-- Vulkan path. Pi 5 supports Vulkan 1.3 which would let us do real
-  compute shaders, but that's a separate render-backend rewrite, not a
-  detection-and-tier task.
-- Auto-OC per gen. The existing thermal-limit story already handles
-  that ground; baking gen-specific OC into boot config is a
-  deploy-time choice, not a runtime one.
+- Cross-build, deploy, boot Pi 4 and Pi 5. Confirm 28a env-driven
+  `render_scale` is what the unit drop-in says.
+- `--benchmark 60` on each new Pi, dump csv into `.docs/bench-pi4.md`
+  and `.docs/bench-pi5.md`.
+- Drop a 300-es scene into `scenes/`, confirm it filters out on Pi 3
+  (via 28a's `min_pi_gen` path) and renders correctly on Pi 4/5.
+- Enable the new Gaussian bloom pass on Pi 4 and Pi 5, verify it
+  filters out on Pi 3.

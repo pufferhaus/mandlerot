@@ -129,6 +129,11 @@ pub struct PanelSnapshot {
     pub active_look_slot: Option<u8>,
     pub layer_a: LayerSnapshot,
     pub layer_b: LayerSnapshot,
+    /// Current video-capture status surfaced to the top-bar `VID:` chip.
+    /// Defaulted to `NoDevice` by `from_state`; the main render loop
+    /// overrides this with the live `VideoHandle::status()` before sending
+    /// the snapshot to the status worker.
+    pub video_status: crate::video::VideoStatus,
 }
 
 impl PanelSnapshot {
@@ -146,6 +151,7 @@ impl PanelSnapshot {
             active_look_slot: state.active_look_slot,
             layer_a: LayerSnapshot::from_layer(&state.layer_a),
             layer_b: LayerSnapshot::from_layer(&state.layer_b),
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 }

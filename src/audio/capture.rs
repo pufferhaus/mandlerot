@@ -54,9 +54,20 @@ impl RingBuffer {
 
 impl CaptureStream {
     pub fn open_default() -> Result<Self> {
+        Self::open_with_device(None)
+    }
+
+    /// Open a capture stream with an optional explicit device-name substring.
+    /// Resolution order:
+    ///   1. `name` if `Some` and non-empty.
+    ///   2. `MANDLEROT_AUDIO_DEVICE` env var if set.
+    ///   3. Host default input device.
+    pub fn open_with_device(name: Option<&str>) -> Result<Self> {
         let host = cpal::default_host();
-        // Optional explicit override by device-name substring.
-        let want_name = std::env::var("MANDLEROT_AUDIO_DEVICE").ok();
+        let want_name = name
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| std::env::var("MANDLEROT_AUDIO_DEVICE").ok());
         let device = Self::pick_input_device(&host, want_name.as_deref())?;
         let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
         let supported = device

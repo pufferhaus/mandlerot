@@ -119,9 +119,13 @@ fn write_top_bar(g: &mut TextScreen, snap: &PanelSnapshot, postfx_summary: &str)
     } else {
         postfx_summary.to_string()
     };
-    // Cap the value so it never bleeds into BPM at col 60.
-    let post_trim: String = post.chars().take(20).collect();
+    // Cap the value to 11 chars (cols 35..=45) so the `VID:xx` chip can
+    // land at col 47 with 3 cols of breathing room before BPM at col 60.
+    let post_trim: String = post.chars().take(11).collect();
     g.write(0, 35, ATTR_BRIGHT, &post_trim);
+    // 6-char video-capture status chip: `VID:--` / `VID:OK` / `VID:ST` /
+    // `VID:ER`. Ends at col 52, leaving cols 53..59 blank before BPM.
+    g.write(0, 47, ATTR_BRIGHT, snap.video_status.as_chip());
     let bpm = format!("BPM:{:>3.0}", snap.bpm);
     g.write(0, 60, ATTR_BRIGHT, &bpm);
     let aud_lbl = format!("AUD:{}", aud);
@@ -499,6 +503,15 @@ mod tests {
         let g = state_to_grid(&PanelSnapshot::from_state(&state()), "vig+grn", &SysMon::new(), None);
         let value: String = (35..42).map(|c| g.at(0, c).ch).collect();
         assert_eq!(value, "vig+grn");
+    }
+
+    #[test]
+    fn top_bar_includes_video_chip() {
+        // Default snapshot from a SharedState has VideoStatus::NoDevice, so
+        // the 6-char chip text at cols 47..53 should read `VID:--`.
+        let g = state_to_grid(&PanelSnapshot::from_state(&state()), "", &SysMon::new(), None);
+        let chip: String = (47..53).map(|c| g.at(0, c).ch).collect();
+        assert_eq!(chip, "VID:--");
     }
 
     #[test]
