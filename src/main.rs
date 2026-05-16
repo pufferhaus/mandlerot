@@ -668,6 +668,7 @@ fn main() -> anyhow::Result<()> {
                     state_dir: &state_dir,
                     audio: &audio_params,
                     postfx: Some(&mut pipeline.postfx),
+                    video_status: mandlerot::video::VideoStatus::NoDevice,
                 };
                 ui_stack.handle_key(&key, &mut ctx);
                 continue;
@@ -760,13 +761,18 @@ fn main() -> anyhow::Result<()> {
                 postfx: Some(&pipeline.postfx),
                 filtered_scenes: filtered,
                 pi_gen,
+                video_status: mandlerot::video::VideoStatus::NoDevice,
             };
             ui_stack.render_top(&rctx)
         } else {
             None
         };
+        let mut panel = mandlerot::status::snapshot::PanelSnapshot::from_state(&state);
+        // Task 10 will replace this with `pipeline.video_status()`. Stays
+        // NoDevice for now so the `VID:--` chip renders on every frame.
+        panel.video_status = mandlerot::video::VideoStatus::NoDevice;
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
-            panel: mandlerot::status::snapshot::PanelSnapshot::from_state(&state),
+            panel,
             menu_grid,
             postfx_summary: pipeline.postfx.summary_tag().to_string(),
             fps: if fps_have { Some(fps_smoothed) } else { None },

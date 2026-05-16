@@ -29,6 +29,10 @@ pub struct ScreenCtx<'a> {
     /// that don't exercise post-FX screens pass `None` to avoid having to
     /// build a GL context just to construct a `PostFx`.
     pub postfx: Option<&'a mut PostFx>,
+    /// Live video-capture status, surfaced so screens that want to label
+    /// "no device" / "OK" / "stale" / "error" can do so without reaching
+    /// back into the pipeline.
+    pub video_status: crate::video::VideoStatus,
 }
 
 /// Read-only context for paint time. Decoupled from `ScreenCtx` so the
@@ -45,6 +49,9 @@ pub struct RenderCtx<'a> {
     /// Detected Pi generation, surfaced for screens that want to label
     /// "unsupported on <gen>".
     pub pi_gen: crate::platform::PiGen,
+    /// Live video-capture status, surfaced for screens that want to render
+    /// the current device state (Task 13's audio/video device picker).
+    pub video_status: crate::video::VideoStatus,
 }
 
 /// Result of a single key delivered to a screen.
@@ -186,6 +193,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 
@@ -201,6 +209,7 @@ mod tests {
             postfx: None,
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 

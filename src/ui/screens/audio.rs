@@ -218,6 +218,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            video_status: crate::video::VideoStatus::NoDevice,
         }
     }
 
