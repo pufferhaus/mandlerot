@@ -1526,6 +1526,7 @@ dependencies = [
  "memmap2",
  "nokhwa",
  "notify",
+ "png",
  "pretty_assertions",
  "raw-window-handle",
  "rustfft",

@@ -16,6 +16,16 @@ pub enum ReloadEvent {
     SceneTouched { stem: String },
     /// `<stem>.glsl` or `<stem>.toml` was removed.
     SceneRemoved { stem: String },
+    /// A postfx file (`<stem>.glsl`, `.toml`, or `.png`) was created or modified.
+    PostFxTouched { stem: String },
+    /// A postfx file (`<stem>.glsl`, `.toml`, or `.png`) was removed.
+    PostFxRemoved { stem: String },
+}
+
+#[derive(Copy, Clone)]
+enum WatchKind {
+    Scenes,
+    PostFx,
 }
 
 pub struct HotReloader {
@@ -25,11 +35,19 @@ pub struct HotReloader {
 
 impl HotReloader {
     pub fn watch(dir: &Path) -> Result<Self> {
+        Self::watch_with(dir, WatchKind::Scenes)
+    }
+
+    pub fn watch_postfx(dir: &Path) -> Result<Self> {
+        Self::watch_with(dir, WatchKind::PostFx)
+    }
+
+    fn watch_with(dir: &Path, kind: WatchKind) -> Result<Self> {
         let (tx, rx) = std::sync::mpsc::channel::<ReloadEvent>();
         let dir_buf = dir.to_path_buf();
         let mut watcher =
             notify::recommended_watcher(move |res: notify::Result<notify::Event>| match res {
-                Ok(event) => emit_for_event(&dir_buf, &event, &tx),
+                Ok(event) => emit_for_event(&dir_buf, kind, &event, &tx),
                 Err(e) => tracing::warn!("notify error: {e}"),
             })
             .map_err(|e| Error::Backend(format!("notify watcher: {e}")))?;
@@ -51,22 +69,36 @@ impl HotReloader {
     }
 }
 
-fn emit_for_event(_dir: &Path, event: &notify::Event, tx: &Sender<ReloadEvent>) {
+fn emit_for_event(
+    _dir: &Path,
+    kind: WatchKind,
+    event: &notify::Event,
+    tx: &Sender<ReloadEvent>,
+) {
     let stems = event
         .paths
         .iter()
-        .filter(|p| matches_scene_extension(p))
+        .filter(|p| matches_extension_for(kind, p))
         .filter_map(|p| {
             p.file_stem()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string())
         });
     for stem in stems {
-        let evt = match event.kind {
-            EventKind::Remove(_) => ReloadEvent::SceneRemoved { stem },
-            _ => ReloadEvent::SceneTouched { stem },
+        let evt = match (kind, &event.kind) {
+            (WatchKind::Scenes, EventKind::Remove(_)) => ReloadEvent::SceneRemoved { stem },
+            (WatchKind::Scenes, _) => ReloadEvent::SceneTouched { stem },
+            (WatchKind::PostFx, EventKind::Remove(_)) => ReloadEvent::PostFxRemoved { stem },
+            (WatchKind::PostFx, _) => ReloadEvent::PostFxTouched { stem },
         };
         let _ = tx.send(evt);
+    }
+}
+
+fn matches_extension_for(kind: WatchKind, p: &Path) -> bool {
+    match kind {
+        WatchKind::Scenes => matches_scene_extension(p),
+        WatchKind::PostFx => matches_postfx_extension(p),
     }
 }
 
@@ -75,6 +107,17 @@ fn matches_scene_extension(p: &Path) -> bool {
         p.extension().and_then(|s| s.to_str()),
         Some("glsl") | Some("toml")
     )
+}
+
+fn matches_postfx_extension(p: &Path) -> bool {
+    p.extension()
+        .and_then(|s| s.to_str())
+        .map(|e| {
+            e.eq_ignore_ascii_case("glsl")
+                || e.eq_ignore_ascii_case("toml")
+                || e.eq_ignore_ascii_case("png")
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -101,5 +144,39 @@ mod tests {
             }
         }
         assert!(matches!(got, Some(ReloadEvent::SceneTouched { stem }) if stem == "my"));
+    }
+
+    #[test]
+    fn matches_postfx_extension_accepts_glsl_toml_png() {
+        assert!(matches_postfx_extension(Path::new("a.glsl")));
+        assert!(matches_postfx_extension(Path::new("a.toml")));
+        assert!(matches_postfx_extension(Path::new("a.png")));
+    }
+
+    #[test]
+    fn matches_postfx_extension_rejects_others() {
+        assert!(!matches_postfx_extension(Path::new("a.txt")));
+        assert!(!matches_postfx_extension(Path::new("a")));
+        assert!(!matches_postfx_extension(Path::new("a.jpg")));
+    }
+
+    #[test]
+    fn watch_postfx_emits_on_png_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let watcher = HotReloader::watch_postfx(tmp.path()).unwrap();
+        let path = tmp.path().join("grade.png");
+        // two writes — some platforms collapse create+write into a single event
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\n").unwrap();
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\n").unwrap();
+        let mut got = None;
+        for _ in 0..20 {
+            if let Some(e) = watcher.recv_timeout(Duration::from_millis(200)) {
+                if matches!(e, ReloadEvent::PostFxTouched { .. }) {
+                    got = Some(e);
+                    break;
+                }
+            }
+        }
+        assert!(matches!(got, Some(ReloadEvent::PostFxTouched { stem }) if stem == "grade"));
     }
 }

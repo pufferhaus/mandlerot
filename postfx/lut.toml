@@ -1,0 +1,22 @@
+name = "lut"
+display_name = "LUT Grade"
+enabled_by_default = false
+
+# Slot 0 = LUT picker index. Range is intentionally over-provisioned (0..31)
+# so users can drop up to ~32 PNGs into postfx/luts/ without editing this
+# file. Rust clamps the value to the actual LUT count at render time.
+[[params]]
+slot = 0
+name = "lut_index"
+min = 0.0
+max = 31.0
+default = 0.0
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "amount"
+min = 0.0
+max = 1.0
+default = 1.0
+curve = "linear"

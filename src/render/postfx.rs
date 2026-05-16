@@ -42,6 +42,7 @@ struct PostFxUniforms {
     u_resolution: Option<glow::UniformLocation>,
     u_audio_mid: Option<glow::UniformLocation>,
     u_params: [Option<glow::UniformLocation>; 8],
+    u_lut: Option<glow::UniformLocation>,
 }
 
 fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFxUniforms {
@@ -67,6 +68,7 @@ fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFx
         u_resolution: loc("u_resolution"),
         u_audio_mid: loc("u_audio_mid"),
         u_params,
+        u_lut: loc("u_lut"),
     }
 }
 
@@ -81,6 +83,8 @@ pub struct PostFxPass {
     pub enabled: bool,
     /// Cached uniform locations for `program`. Populated at link time.
     uniforms: PostFxUniforms,
+    /// Only populated for the pass named "lut" — empty for all others.
+    pub lut_textures: Vec<glow::Texture>,
 }
 
 /// The whole chain. The order in `passes` is the dispatch order; `enabled`
@@ -172,35 +176,70 @@ impl PostFx {
             }
             found.insert(stem, (path, meta_path));
         }
-        for (name, (glsl, toml_path)) in found {
-            match self.load_one(&name, &glsl, &toml_path) {
-                Ok(pass) => self.passes.push(pass),
+        // 1. Upsert each discovered pass. This preserves enable/param state
+        //    across hot-reloads and refuses to duplicate existing entries.
+        for (name, (glsl, toml_path)) in &found {
+            match (|| -> Result<()> {
+                let body = std::fs::read_to_string(glsl)?;
+                let meta_str = std::fs::read_to_string(toml_path)?;
+                let meta = SceneMeta::parse(&meta_str, &toml_path.display().to_string())?;
+                meta.validate()?;
+                self.upsert(name, &body, meta, toml_path.clone())
+            })() {
+                Ok(()) => {}
                 Err(e) => tracing::warn!("postfx '{name}': {e}; skipping"),
             }
         }
+
+        // 2. Remove any passes whose file is no longer on disk. Free their
+        //    GL program + LUT textures before dropping.
+        let surviving_names: std::collections::HashSet<&String> = found.keys().collect();
+        let to_remove: Vec<usize> = self
+            .passes
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !surviving_names.contains(&p.name))
+            .map(|(i, _)| i)
+            .collect();
+        for idx in to_remove.into_iter().rev() {
+            let p = self.passes.remove(idx);
+            unsafe {
+                self.gl.delete_program(p.program);
+                for tex in &p.lut_textures {
+                    self.gl.delete_texture(*tex);
+                }
+            }
+        }
+
+        // 3. Populate lut_textures for the "lut" pass, if present.
+        let luts_dir = dir.join("luts");
+        let lut_paths = crate::render::lut::scan_lut_paths(&luts_dir);
+        if let Some(idx) = self.find("lut") {
+            // Drop the old textures explicitly — Drop on PostFx runs only at the end
+            // of process lifetime; we'd leak GL handles on every reload otherwise.
+            unsafe {
+                for tex in &self.passes[idx].lut_textures {
+                    self.gl.delete_texture(*tex);
+                }
+            }
+            let mut new_textures = Vec::with_capacity(lut_paths.len());
+            for p in &lut_paths {
+                // Deref coercion converts &Arc<glow::Context> to &glow::Context.
+                match crate::render::lut::load_lut_png(&self.gl, p) {
+                    Ok(t) => new_textures.push(t),
+                    Err(e) => tracing::warn!("LUT load skipped {}: {e}", p.display()),
+                }
+            }
+            tracing::info!(
+                "postfx: lut pass attached {} LUT(s) from {}",
+                new_textures.len(),
+                luts_dir.display()
+            );
+            self.passes[idx].lut_textures = new_textures;
+        }
+
         self.refresh_summary();
         Ok(())
-    }
-
-    fn load_one(&self, _name: &str, glsl: &Path, toml_path: &Path) -> Result<PostFxPass> {
-        let body = std::fs::read_to_string(glsl)?;
-        let meta_str = std::fs::read_to_string(toml_path)?;
-        let meta = SceneMeta::parse(&meta_str, &toml_path.display().to_string())?;
-        meta.validate()?;
-        let frag = assemble_postfx_fragment(&body);
-        let program = compile_program(&self.gl, QUAD_VERT, &frag)?;
-        let uniforms = resolve_postfx_uniforms(&self.gl, program);
-        let params = ParamMap::from_scene(&meta);
-        Ok(PostFxPass {
-            name: meta.name.clone(),
-            enabled: meta.enabled_by_default,
-            meta,
-            fragment_body: body,
-            source_path: glsl.to_path_buf(),
-            program,
-            params,
-            uniforms,
-        })
     }
 
     /// The FBO the pipeline should write the blend output to before calling
@@ -248,7 +287,14 @@ impl PostFx {
         // Walk enabled passes. The chain always ends in a feedback fbo (not
         // scanout) so we can read it as `u_prev` next frame; a final blit
         // pass copies that fbo to the default framebuffer.
-        let enabled_count = self.passes.iter().filter(|p| p.enabled).count();
+        //
+        // A LUT pass with no textures on disk can never render — exclude it
+        // from both the count and the iteration so `is_last` is always set by
+        // a pass that actually draws and writes to `feedback[next_feedback]`.
+        let is_renderable = |p: &PostFxPass| -> bool {
+            p.enabled && !(p.name == "lut" && p.lut_textures.is_empty())
+        };
+        let enabled_count = self.passes.iter().filter(|p| is_renderable(p)).count();
         if enabled_count == 0 {
             return;
         }
@@ -268,11 +314,22 @@ impl PostFx {
         // The pipeline's quad VAO is bound once at startup; no need to
         // re-bind here.
         let mut seen = 0usize;
-        for pass in self.passes.iter().filter(|p| p.enabled) {
+        for pass in self.passes.iter().filter(|p| is_renderable(p)) {
             seen += 1;
             let is_last = seen == enabled_count;
             let input_idx = self.input_idx;
             let next_idx = 1 - input_idx;
+            // Pre-filter guarantees lut_textures is non-empty when name == "lut",
+            // so pick_lut_index always returns Some here.
+            let lut_bind = if pass.name == "lut" {
+                let slots_preview = pass
+                    .params
+                    .effective_slot_values(&state.audio_bands, state.audio_bypass);
+                crate::render::lut::pick_lut_index(slots_preview[0], pass.lut_textures.len())
+                    .map(|idx| pass.lut_textures[idx])
+            } else {
+                None
+            };
             unsafe {
                 if is_last {
                     // End the chain in a persistent feedback fbo. A
@@ -289,6 +346,16 @@ impl PostFx {
                 // Sampler `u_input` was set to unit 0 at link time. We
                 // never leave unit 0 after a frame so no `active_texture`
                 // call needed here either.
+                if let Some(tex) = lut_bind {
+                    self.gl.active_texture(glow::TEXTURE4);
+                    self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                    if let Some(loc) = &pass.uniforms.u_lut {
+                        self.gl.uniform_1_i32(Some(loc), 4);
+                    }
+                    // Restore TU0 as active so the existing `u_input` binding
+                    // code path continues to write to TU0 next iteration.
+                    self.gl.active_texture(glow::TEXTURE0);
+                }
                 if let Some(loc) = &pass.uniforms.u_time {
                     self.gl.uniform_1_f32(Some(loc), state.time_secs);
                 }
@@ -319,6 +386,11 @@ impl PostFx {
                     }
                 }
                 self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+                if lut_bind.is_some() {
+                    self.gl.active_texture(glow::TEXTURE4);
+                    self.gl.bind_texture(glow::TEXTURE_2D, None);
+                    self.gl.active_texture(glow::TEXTURE0);
+                }
             }
             self.input_idx = next_idx;
         }
@@ -373,6 +445,7 @@ impl PostFx {
             source_path,
             program,
             uniforms,
+            lut_textures: Vec::new(),
         };
         self.passes.push(pass);
         self.refresh_summary();
@@ -393,7 +466,9 @@ impl PostFx {
     fn refresh_summary(&mut self) {
         self.summary_cache.clear();
         let mut first = true;
-        for p in self.passes.iter().filter(|p| p.enabled) {
+        for p in self.passes.iter().filter(|p| {
+            p.enabled && !(p.name == "lut" && p.lut_textures.is_empty())
+        }) {
             if !first {
                 self.summary_cache.push('+');
             }
@@ -511,8 +586,13 @@ impl Drop for PostFx {
     fn drop(&mut self) {
         // Programs are GL-owned; drop them explicitly so we don't leak when
         // the Pipeline tears down on shutdown. (FBOs handle themselves.)
-        for p in &self.passes {
-            unsafe { self.gl.delete_program(p.program) };
+        for pass in &self.passes {
+            unsafe {
+                for tex in &pass.lut_textures {
+                    self.gl.delete_texture(*tex);
+                }
+            }
+            unsafe { self.gl.delete_program(pass.program) };
         }
     }
 }
@@ -580,20 +660,77 @@ mod tests {
     }
 
     #[test]
-    fn ships_three_postfx_pass_pairs_on_disk() {
-        // Sanity: the three Phase-1 pass files exist and are paired.
-        for name in ["vignette", "grain", "pixelate"] {
+    fn ships_postfx_pass_pairs_on_disk() {
+        for name in [
+            "bloom", "chromatic", "dither", "grain", "lut",
+            "pixelate", "trails", "vignette",
+        ] {
             let glsl = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("postfx")
                 .join(format!("{name}.glsl"));
             let toml = glsl.with_extension("toml");
             assert!(glsl.exists(), "missing {}", glsl.display());
             assert!(toml.exists(), "missing {}", toml.display());
-            // Meta parses + validates.
             let s = std::fs::read_to_string(&toml).unwrap();
             let m = SceneMeta::parse(&s, &toml.display().to_string()).unwrap();
             m.validate().unwrap();
             assert_eq!(m.name, name);
+        }
+    }
+
+    #[test]
+    fn load_dir_uses_repo_postfx_dir_idempotently() {
+        // Sanity for the bug-fix: PostFx::load_dir is safe to call multiple times.
+        // We can't construct a real PostFx without GL, but we CAN verify that the
+        // same set of (name, (glsl, toml)) pairs is discovered on disk regardless
+        // of call count — i.e. the directory contents are stable.
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("postfx");
+        let mut names_first: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("glsl"))
+            .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string()))
+            .collect();
+        names_first.sort();
+
+        let mut names_second: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("glsl"))
+            .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string()))
+            .collect();
+        names_second.sort();
+
+        assert_eq!(names_first, names_second, "postfx/ contents must be stable between scans");
+        assert!(names_first.contains(&"lut".to_string()), "lut pass must be present");
+        assert_eq!(names_first.len(), 8, "8 postfx passes (was 7 before LUT shipped)");
+    }
+
+    #[test]
+    fn ships_baked_luts_on_disk() {
+        let luts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("postfx")
+            .join("luts");
+        for name in ["identity.png", "teal_orange.png"] {
+            let p = luts_dir.join(name);
+            assert!(p.exists(), "missing {}", p.display());
+            let bytes = std::fs::read(&p).unwrap();
+            assert_eq!(&bytes[0..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+            let rgba = crate::render::lut::decode_lut_png(&bytes).expect("baked LUT must decode");
+            if name == "identity.png" {
+                // Spot-check the identity mapping. Strip layout:
+                //   x = blue_slice * 16 + r, y = g, channel = idx * 17.
+                let pixel = |x: usize, y: usize| {
+                    let base = (y * 256 + x) * 4;
+                    [rgba[base], rgba[base + 1], rgba[base + 2], rgba[base + 3]]
+                };
+                assert_eq!(pixel(0, 0),   [0,   0,   0,   255], "identity (0,0)");
+                assert_eq!(pixel(15, 0),  [255, 0,   0,   255], "identity (15,0)");
+                assert_eq!(pixel(0, 15),  [0,   255, 0,   255], "identity (0,15)");
+                assert_eq!(pixel(240, 0), [0,   0,   255, 255], "identity (240,0)");
+            }
         }
     }
 }

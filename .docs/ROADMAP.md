@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
+- **2026-05-16** Post-FX LUT colour grade + `postfx/` hot-reload (26b') — new `src/render/lut.rs` (PNG decode + GL upload via `png` crate), `postfx/lut.{glsl,toml}` pass (256×16 strip LUT, manual B-axis interp, NEAREST in R/G), 2 baked LUTs (`identity.png`, `teal_orange.png`), param-indexed picker via slot 0 (Rust-side, shader-blind), `u_lut` uniform bound to TU4 by `PostFx::run`, `HotReloader::watch_postfx()` + `PostFxTouched/Removed` variants polled in the main loop. 247 tests green. Spec at `docs/superpowers/specs/2026-05-16-postfx-lut-design.md`.
 - **2026-05-16** Video input (item 24) — new `src/video/` (nokhwa-backed capture thread, `ArcSwap<Arc<VideoFrame>>` handoff), `u_video` + `u_video_uv_scale` in the GLSL prelude (TU3), baked `__video__` scene, demo `video_glitch` scene, `VID:` status chip, F4 → Audio → Device picker for routing dongle audio. Continuous capture with 5s NoDevice retry + 1s stale threshold. Spec at `docs/superpowers/specs/2026-05-16-video-input-design.md`.
 - **2026-05-16** Pi-gen detect + per-scene caps (28a) — new `src/platform.rs` (`PiGen::detect`, env override), `min_pi_gen` filter on `SceneLibrary::load_dir_for_gen`, pipeline drops per-scene `internal_resolution` caps on Pi 5 / Unknown so previously down-scaled scenes scale up to native, `install.sh` writes per-gen `MANDLEROT_RENDER_SCALE` + skips `composite=1` on Pi 4/5. Scene-list menu surfaces "N visible / M hidden on PiX". 218 tests green.
-- **2026-05-15** Numpad menu arrows + `000+±` param chord — rotated pad now navigates menus via centre cross (`6/4/8/2` → U/D/L/R) and steps params with `000`-held xfade keys. Slots screen drops numpad digit-jump (was misaligned with rotation).
 
 ## Design Notes
 
@@ -53,7 +53,7 @@ _(none currently tracked)_
 | 25b | Blend modes tier 2 (SoftLight, ColorDodge, ColorBurn, Hue, Saturation, Color, Luminosity) | ✅ | `shaders/blend.glsl`, `src/state.rs::BlendMode` |
 | 26a | Post-FX phase 1: chain skeleton + Vignette/Grain/Pixelate passes (no UI, no persistence) | ✅ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `shaders/postfx_prelude.glsl`, `postfx/*.{glsl,toml}` |
 | 26b | Post-FX phase 2: UI (F4→Post-FX), `postfx.toml` persistence, Chromatic Aberration + Bayer Dither | ✅ | `src/ui/screens/postfx.rs`, `src/render/postfx.rs`, `postfx/{chromatic,dither}.{glsl,toml}` |
-| 26b' | Post-FX phase 2b: LUT colour grade (needs PNG loader + aux texture) + hot-reload of `postfx/` dir | ☐ | `src/render/postfx.rs`, `src/hot_reload.rs`, `postfx/lut.{glsl,toml}` |
+| 26b' | Post-FX phase 2b: LUT colour grade (needs PNG loader + aux texture) + hot-reload of `postfx/` dir | ✅ | `src/render/postfx.rs`, `src/hot_reload.rs`, `postfx/lut.{glsl,toml}` |
 | 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ☐ | `src/render/postfx.rs`, `postfx/{bloom,crt}.{glsl,toml}` |
 | 26d | Post-FX phase 4: per-Look post-FX (Look schema bump to v2) | ☐ | `src/preset/store.rs`, `src/apply.rs` |
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
