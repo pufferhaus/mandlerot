@@ -580,20 +580,35 @@ mod tests {
     }
 
     #[test]
-    fn ships_three_postfx_pass_pairs_on_disk() {
-        // Sanity: the three Phase-1 pass files exist and are paired.
-        for name in ["vignette", "grain", "pixelate"] {
+    fn ships_postfx_pass_pairs_on_disk() {
+        for name in [
+            "bloom", "chromatic", "dither", "grain", "lut",
+            "pixelate", "trails", "vignette",
+        ] {
             let glsl = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("postfx")
                 .join(format!("{name}.glsl"));
             let toml = glsl.with_extension("toml");
             assert!(glsl.exists(), "missing {}", glsl.display());
             assert!(toml.exists(), "missing {}", toml.display());
-            // Meta parses + validates.
             let s = std::fs::read_to_string(&toml).unwrap();
             let m = SceneMeta::parse(&s, &toml.display().to_string()).unwrap();
             m.validate().unwrap();
             assert_eq!(m.name, name);
+        }
+    }
+
+    #[test]
+    fn ships_baked_luts_on_disk() {
+        let luts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("postfx")
+            .join("luts");
+        for name in ["identity.png", "teal_orange.png"] {
+            let p = luts_dir.join(name);
+            assert!(p.exists(), "missing {}", p.display());
+            let bytes = std::fs::read(&p).unwrap();
+            assert_eq!(&bytes[0..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+            crate::render::lut::decode_lut_png(&bytes).expect("baked LUT must decode");
         }
     }
 }
