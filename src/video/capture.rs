@@ -63,7 +63,7 @@ fn run(
         match open_camera(&prefs) {
             Ok(mut cam) => {
                 tracing::info!("video: opened camera ({:?})", cam.resolution());
-                let mut decode_errors: u32 = 0;
+                let mut decode_errors: u32;
                 loop {
                     if stop.load(Ordering::Relaxed) {
                         return;
