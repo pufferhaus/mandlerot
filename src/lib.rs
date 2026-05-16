@@ -38,5 +38,7 @@ pub mod watchdog;
 
 pub mod platform;
 
+pub mod video;
+
 #[cfg(feature = "desktop")]
 pub mod headless;
