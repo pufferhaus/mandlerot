@@ -42,6 +42,7 @@ struct PostFxUniforms {
     u_resolution: Option<glow::UniformLocation>,
     u_audio_mid: Option<glow::UniformLocation>,
     u_params: [Option<glow::UniformLocation>; 8],
+    u_lut: Option<glow::UniformLocation>,
 }
 
 fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFxUniforms {
@@ -67,6 +68,7 @@ fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFx
         u_resolution: loc("u_resolution"),
         u_audio_mid: loc("u_audio_mid"),
         u_params,
+        u_lut: loc("u_lut"),
     }
 }
 
@@ -81,6 +83,8 @@ pub struct PostFxPass {
     pub enabled: bool,
     /// Cached uniform locations for `program`. Populated at link time.
     uniforms: PostFxUniforms,
+    /// Only populated for the pass named "lut" — empty for all others.
+    pub lut_textures: Vec<glow::Texture>,
 }
 
 /// The whole chain. The order in `passes` is the dispatch order; `enabled`
@@ -200,6 +204,7 @@ impl PostFx {
             program,
             params,
             uniforms,
+            lut_textures: Vec::new(),
         })
     }
 
@@ -273,6 +278,21 @@ impl PostFx {
             let is_last = seen == enabled_count;
             let input_idx = self.input_idx;
             let next_idx = 1 - input_idx;
+            // Resolved before any GL state mutation so we can `continue` cleanly.
+            let lut_bind = if pass.name == "lut" {
+                let slots_preview = pass
+                    .params
+                    .effective_slot_values(&state.audio_bands, state.audio_bypass);
+                match crate::render::lut::pick_lut_index(slots_preview[0], pass.lut_textures.len()) {
+                    None => {
+                        // LUT pass enabled but no LUTs on disk — skip silently.
+                        continue;
+                    }
+                    Some(idx) => Some(pass.lut_textures[idx]),
+                }
+            } else {
+                None
+            };
             unsafe {
                 if is_last {
                     // End the chain in a persistent feedback fbo. A
@@ -289,6 +309,16 @@ impl PostFx {
                 // Sampler `u_input` was set to unit 0 at link time. We
                 // never leave unit 0 after a frame so no `active_texture`
                 // call needed here either.
+                if let Some(tex) = lut_bind {
+                    self.gl.active_texture(glow::TEXTURE4);
+                    self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                    if let Some(loc) = &pass.uniforms.u_lut {
+                        self.gl.uniform_1_i32(Some(loc), 4);
+                    }
+                    // Restore TU0 as active so the existing `u_input` binding
+                    // code path continues to write to TU0 next iteration.
+                    self.gl.active_texture(glow::TEXTURE0);
+                }
                 if let Some(loc) = &pass.uniforms.u_time {
                     self.gl.uniform_1_f32(Some(loc), state.time_secs);
                 }
@@ -319,6 +349,11 @@ impl PostFx {
                     }
                 }
                 self.gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+                if lut_bind.is_some() {
+                    self.gl.active_texture(glow::TEXTURE4);
+                    self.gl.bind_texture(glow::TEXTURE_2D, None);
+                    self.gl.active_texture(glow::TEXTURE0);
+                }
             }
             self.input_idx = next_idx;
         }
@@ -373,6 +408,7 @@ impl PostFx {
             source_path,
             program,
             uniforms,
+            lut_textures: Vec::new(),
         };
         self.passes.push(pass);
         self.refresh_summary();
@@ -511,8 +547,13 @@ impl Drop for PostFx {
     fn drop(&mut self) {
         // Programs are GL-owned; drop them explicitly so we don't leak when
         // the Pipeline tears down on shutdown. (FBOs handle themselves.)
-        for p in &self.passes {
-            unsafe { self.gl.delete_program(p.program) };
+        for pass in &self.passes {
+            unsafe {
+                for tex in &pass.lut_textures {
+                    self.gl.delete_texture(*tex);
+                }
+            }
+            unsafe { self.gl.delete_program(pass.program) };
         }
     }
 }
