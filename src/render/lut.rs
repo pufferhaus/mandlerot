@@ -71,12 +71,16 @@ pub fn decode_lut_file(path: &Path) -> Result<Vec<u8>> {
 /// Sampling state: `GL_NEAREST` in both axes (the LUT shader manually
 /// interpolates the B axis; bilinear would bleed across 16-pixel slices).
 ///
-/// # Safety
-///
-/// Caller must have a current GL context. The returned texture is owned
-/// by the caller — they're responsible for calling `gl.delete_texture` on it.
+/// Returns the new texture. The caller owns it and must `gl.delete_texture`
+/// when done.
 pub fn upload_lut_texture(gl: &glow::Context, rgba: &[u8]) -> Result<glow::Texture> {
-    assert_eq!(rgba.len(), 256 * 16 * 4, "LUT buffer must be 256*16*4 bytes");
+    if rgba.len() != 256 * 16 * 4 {
+        return Err(Error::Backend(format!(
+            "LUT buffer must be {} bytes, got {}",
+            256 * 16 * 4,
+            rgba.len()
+        )));
+    }
     unsafe {
         let tex = gl
             .create_texture()
