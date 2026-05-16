@@ -84,7 +84,7 @@ alone does nothing.
 
 ```
    ┌──────┬──────┬──────┬──────┐
-   │ ·    │ ·    │ Blnd │AudByp│
+   │ Pm−  │ Pm+  │ Blnd │AudByp│
    ├──────┼──────┼──────┼──────┼──────┐
    │ scn◀'│ ·    │ ·    │ ·    │Sttngs│
    ├──────┼──────┼──────┼──────┼──────┤
@@ -96,6 +96,8 @@ alone does nothing.
 
 | Combo             | Action                                       |
 | ----------------- | -------------------------------------------- |
+| `000` + `−`       | Param step − on selected param (PARAM mode)  |
+| `000` + `+`       | Param step + on selected param (PARAM mode)  |
 | `000` + `Bksp`    | Blend mode cycle (Mix → Add → Mult → …)      |
 | `000` + `Enter`   | Toggle audio bypass                          |
 | `000` + `×` (`*`) | Scene cycle −1 on the **inactive** layer     |
@@ -105,9 +107,49 @@ alone does nothing.
 | `000` + `0`       | Freeze toggle (latch current output frame)   |
 | `000` + anything else | no-op                                    |
 
+`000+−`/`000+=` are no-ops outside PARAM mode — unmodified `−`/`+` always
+drive xfade, so the modifier is what gates param edits from the pad.
+
 The PREV-other combo lets you scrub the inactive layer backwards without
 first flipping which layer is active — pair with `Enter` (toggle layer)
 to swap the cued scene onto screen.
+
+---
+
+## In menus (settings, slots, scene list, post-FX…)
+
+When a menu screen is open, the keymap is bypassed: every key goes
+straight to the top screen. The rotated numpad's centre cross is
+translated into arrow keys before the screen sees them, so the
+3×3 digit block reads as a natural d-pad from the operator's POV:
+
+```
+   ┌──────┬──────┬──────┬──────┐
+   │  Up  │ Down │ Esc  │ OK   │     (− = Up, + = Down on row 1)
+   ├──────┼──────┼──────┼──────┼──────┐
+   │  ·   │  ·   │  Up  │  ·   │  ·   │
+   ├──────┼──────┼──────┼──────┼──────┤
+   │  ·   │ Left │  ·   │ Right│ 000  │
+   ├──────┼──────┼──────┼──────┼──────┤
+   │  ·   │  ·   │ Down │  ·   │  ·   │
+   └──────┴──────┴──────┴──────┴──────┘
+```
+
+| Key on pad | In menus      | Notes |
+| ---------- | ------------- | ----- |
+| `−`        | Cursor Up     | settings & list screens |
+| `+`        | Cursor Down   | settings & list screens |
+| `Bksp`     | Back (pop)    | also leaves the menu stack |
+| `Enter`    | Confirm       | open / commit selection |
+| `6` (top-centre digit) | Up    | numpad d-pad |
+| `4` (bottom-centre digit) | Down | numpad d-pad |
+| `8` (left-centre digit) | Left | page / value − |
+| `2` (right-centre digit) | Right | page / value + |
+| corners `1 3 7 9` | (per screen) | slot screen ignores; some screens use as digit jumps |
+| `0`        | Clear / no-op | e.g. clear slot binding on the Slots screen |
+
+The double-tap Esc / Backspace PANIC and the `−`+`+`+`Enter` numpad
+chord still close the menu stack on top of firing the safe-fallback.
 
 ---
 
@@ -156,7 +198,7 @@ within 400 ms.
 ```
 DEFAULT                           WITH 000 HELD
 ┌─────┬─────┬─────┬─────┐         ┌─────┬─────┬─────┬─────┐
-│ xf− │ xf+ │Trig │Lyr⇄ │         │  ·  │  ·  │Blnd │AudBy│
+│ xf− │ xf+ │Trig │Lyr⇄ │         │ pm− │ pm+ │Blnd │AudBy│
 ├─────┼─────┼─────┼─────┼─────┐   ├─────┼─────┼─────┼─────┼─────┐
 │scn◀ │  1  │  2  │  3  │Mode▶│   │scn◀'│  ·  │  ·  │  ·  │Sttng│
 ├─────┼─────┼─────┼─────┼─────┤   ├─────┼─────┼─────┼─────┼─────┤
@@ -164,8 +206,21 @@ DEFAULT                           WITH 000 HELD
 ├─────┼─────┼─────┼─────┼─────┤   ├─────┼─────┼─────┼─────┼─────┤
 │dead │  7  │  8  │  9  │ Tap │   │  ·  │  ·  │  ·  │  ·  │Freez│
 └─────┴─────┴─────┴─────┴─────┘   └─────┴─────┴─────┴─────┴─────┘
+
+IN MENUS (rotated-numpad → arrows)
+┌─────┬─────┬─────┬─────┐
+│ Up  │Down │Back │ OK  │      − / + cursor, Bksp pop, Enter confirm
+├─────┼─────┼─────┼─────┼─────┐
+│  ·  │  ·  │ Up  │  ·  │  ·  │  centre cross of digit block
+├─────┼─────┼─────┼─────┼─────┤  remaps to arrows:
+│  ·  │Left │  ·  │Right│ 000 │   6=Up  4=Down  8=Left  2=Right
+├─────┼─────┼─────┼─────┼─────┤
+│  ·  │  ·  │Down │  ·  │ Clr │
+└─────┴─────┴─────┴─────┴─────┘
 ```
 
 `scn◀` / `scn▶` cycle the **active** layer's previous / next scene; the
 prime forms `scn◀'` / `scn▶'` cycle the **inactive** layer. Pair with
-`Enter` (toggle layer) to swap which side is on screen.
+`Enter` (toggle layer) to swap which side is on screen. `pm−` / `pm+`
+are PARAM-mode-only — outside PARAM mode the `000`+`±` chord is a no-op
+and unmodified `−`/`+` still drive xfade.
