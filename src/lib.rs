@@ -36,5 +36,7 @@ pub mod supervisor;
 
 pub mod watchdog;
 
+pub mod platform;
+
 #[cfg(feature = "desktop")]
 pub mod headless;

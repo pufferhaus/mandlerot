@@ -119,8 +119,20 @@ fn main() -> anyhow::Result<()> {
         .init();
     let cli = Cli::parse();
 
+    let pi_gen = mandlerot::platform::detect();
+    tracing::info!("detected platform: {:?}", pi_gen);
+
     let cfg = Config::load(&cli.config).context("load config")?;
-    let mut library = SceneLibrary::load_dir(&cli.scenes).context("load scenes")?;
+    let mut library =
+        SceneLibrary::load_dir_for_gen(&cli.scenes, pi_gen).context("load scenes")?;
+    let filtered = library.filtered_count();
+    if filtered > 0 {
+        tracing::info!(
+            "scene filter: {} scene(s) hidden (require gen above {:?})",
+            filtered,
+            pi_gen,
+        );
+    }
     let keymap = KeyMap::load(&cli.keymap).context("load keymap")?;
     // One-time migration: rename legacy `presets.json` to the new `looks.json`
     // location if the new file is missing. Idempotent — runs every startup
@@ -174,7 +186,17 @@ fn main() -> anyhow::Result<()> {
     };
 
     let gl: Arc<glow::Context> = target.gl();
-    let scale = cfg.render.render_scale.clamp(0.25, 1.0);
+    // `MANDLEROT_RENDER_SCALE` is the per-host override written by the
+    // install-time `pi-gen.conf` systemd drop-in (Pi 3 → 0.33, Pi 4 → 0.66,
+    // Pi 5 → 1.0). It wins over `config.toml` so `make deploy` re-rsync
+    // can't clobber the per-host tier. Garbage values fall through to the
+    // shipped config value.
+    let base_scale = cfg.render.render_scale;
+    let scale = std::env::var("MANDLEROT_RENDER_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(base_scale)
+        .clamp(0.25, 1.0);
     let (scan_w, scan_h) = target.dimensions();
     let render_w = ((scan_w as f32 * scale).round() as u32).max(64);
     let render_h = ((scan_h as f32 * scale).round() as u32).max(64);
@@ -184,7 +206,7 @@ fn main() -> anyhow::Result<()> {
             scale, render_w, render_h, scan_w, scan_h
         );
     }
-    let mut pipeline = Pipeline::new(gl, render_w, render_h)?;
+    let mut pipeline = Pipeline::new_for_gen(gl, render_w, render_h, pi_gen)?;
     // Compile the baked safe-scene up front so PANIC always has a working
     // fallback even if the user's scene compile breaks.
     pipeline.upsert_scene("__safe__", library.require("__safe__")?)?;
@@ -736,6 +758,8 @@ fn main() -> anyhow::Result<()> {
                 bindings: &state.slot_bindings,
                 audio: &audio_params,
                 postfx: Some(&pipeline.postfx),
+                filtered_scenes: filtered,
+                pi_gen,
             };
             ui_stack.render_top(&rctx)
         } else {

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
+use crate::platform::PiGen;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SceneMeta {
@@ -9,6 +10,11 @@ pub struct SceneMeta {
     pub display_name: Option<String>,
     #[serde(default)]
     pub internal_resolution: Option<String>,
+    /// Minimum Pi generation required to render this scene. Absent = runs
+    /// everywhere. Scenes whose required gen exceeds the detected gen are
+    /// filtered out of `SceneLibrary::names()` at load time (see roadmap 28a).
+    #[serde(default)]
+    pub min_pi_gen: Option<PiGen>,
     #[serde(default)]
     pub params: Vec<ParamDef>,
     /// Used by post-FX passes only — scenes ignore this. Lets a `postfx/*.toml`

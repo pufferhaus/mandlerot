@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
+use crate::platform::PiGen;
 
 use super::meta::SceneMeta;
 
@@ -18,10 +19,22 @@ pub struct LoadedScene {
 #[derive(Debug, Default, Clone)]
 pub struct SceneLibrary {
     scenes: BTreeMap<String, LoadedScene>,
+    /// Count of scenes parsed but dropped because their `min_pi_gen` exceeds
+    /// the detected gen. Surfaced in the scene-list menu.
+    filtered_count: usize,
 }
 
 impl SceneLibrary {
+    /// Load all paired `*.glsl` + `*.toml` files in `dir`. No Pi-gen
+    /// filtering — equivalent to running on the desktop dev box.
     pub fn load_dir(dir: &Path) -> Result<Self> {
+        Self::load_dir_for_gen(dir, PiGen::Unknown)
+    }
+
+    /// Load all paired `*.glsl` + `*.toml` files in `dir`, dropping scenes
+    /// whose `min_pi_gen` exceeds `detected`. `PiGen::Unknown` disables
+    /// filtering (desktop dev). See roadmap item 28a.
+    pub fn load_dir_for_gen(dir: &Path, detected: PiGen) -> Result<Self> {
         let mut lib = SceneLibrary::default();
         lib.inject_safe_scene();
         for entry in std::fs::read_dir(dir)? {
@@ -43,6 +56,18 @@ impl SceneLibrary {
             let meta_str = std::fs::read_to_string(&meta_path)?;
             let meta = SceneMeta::parse(&meta_str, &meta_path.display().to_string())?;
             meta.validate()?;
+            if let Some(required) = meta.min_pi_gen {
+                if required > detected {
+                    tracing::info!(
+                        "scene {} requires {} (detected {}); filtered",
+                        stem,
+                        required.as_str(),
+                        detected.as_str(),
+                    );
+                    lib.filtered_count += 1;
+                    continue;
+                }
+            }
             lib.scenes.insert(
                 stem,
                 LoadedScene {
@@ -53,6 +78,12 @@ impl SceneLibrary {
             );
         }
         Ok(lib)
+    }
+
+    /// Number of scenes dropped during `load_dir_for_gen` because their
+    /// `min_pi_gen` exceeded the detected gen.
+    pub fn filtered_count(&self) -> usize {
+        self.filtered_count
     }
 
     pub fn get(&self, name: &str) -> Option<&LoadedScene> {
@@ -129,5 +160,36 @@ mod tests {
         let lib = SceneLibrary::default();
         let err = lib.require("nope").unwrap_err();
         assert!(matches!(err, Error::SceneNotFound(_)));
+    }
+
+    /// `min_pi_gen` filters scenes that require a higher gen than detected.
+    /// Same scene loads fine when detected gen is high enough. Tests both
+    /// directions through `load_dir_for_gen`.
+    #[test]
+    fn min_pi_gen_filters_on_lower_detected_gen() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("future.glsl"),
+            include_str!("../../tests/fixtures/good_scene.glsl"),
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("future.toml"),
+            "name = \"future\"\nmin_pi_gen = \"Pi5\"\n",
+        )
+        .unwrap();
+
+        let lib_pi3 = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi3).unwrap();
+        assert!(lib_pi3.get("future").is_none());
+        assert_eq!(lib_pi3.filtered_count(), 1);
+
+        let lib_pi5 = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi5).unwrap();
+        assert!(lib_pi5.get("future").is_some());
+        assert_eq!(lib_pi5.filtered_count(), 0);
+
+        // Unknown (desktop dev) behaves as the maximum tier: no filtering.
+        let lib_dev = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Unknown).unwrap();
+        assert!(lib_dev.get("future").is_some());
+        assert_eq!(lib_dev.filtered_count(), 0);
     }
 }

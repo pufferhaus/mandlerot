@@ -347,6 +347,8 @@ mod tests {
             bindings: &b,
             audio: &audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
         };
         s.render(&mut g, &rctx);
         // The placeholder for "no postfx" starts at row 4 col 3.
@@ -366,6 +368,8 @@ mod tests {
             bindings: &b,
             audio: &audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
         };
         s.render(&mut g, &rctx);
         let row4: String = (3..30).map(|c| g.at(4, c).ch).collect();

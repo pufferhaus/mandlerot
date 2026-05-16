@@ -39,6 +39,12 @@ pub struct RenderCtx<'a> {
     pub bindings: &'a SlotBindings,
     pub audio: &'a Arc<AudioParams>,
     pub postfx: Option<&'a PostFx>,
+    /// Number of scenes dropped at load time because their `min_pi_gen`
+    /// exceeded the detected gen (roadmap 28a). 0 = no filtering applied.
+    pub filtered_scenes: usize,
+    /// Detected Pi generation, surfaced for screens that want to label
+    /// "unsupported on <gen>".
+    pub pi_gen: crate::platform::PiGen,
 }
 
 /// Result of a single key delivered to a screen.
@@ -193,6 +199,8 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
         }
     }
 

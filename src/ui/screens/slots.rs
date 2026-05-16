@@ -170,6 +170,8 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            filtered_scenes: 0,
+            pi_gen: crate::platform::PiGen::Unknown,
         }
     }
 

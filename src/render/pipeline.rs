@@ -7,6 +7,7 @@ use std::sync::Arc;
 use glow::HasContext;
 
 use crate::error::{Error, Result};
+use crate::platform::PiGen;
 use crate::scene::{LoadedScene, ParamMap};
 use crate::state::SharedState;
 
@@ -55,7 +56,13 @@ pub struct Pipeline {
     scene_programs: BTreeMap<String, SceneProgram>,
     /// scene name → preferred layer FBO size, parsed from
     /// `internal_resolution` in the scene's toml. Absent = use `width × height`.
+    /// Ignored entirely on Pi 5 / Unknown (desktop) — those tiers have the
+    /// GPU headroom to run every scene at native scanout, so the Pi-3-tuned
+    /// caps would just waste pixels. See roadmap item 28a.
     scene_sizes: BTreeMap<String, (u32, u32)>,
+    /// Detected Pi generation. Gates whether per-scene `internal_resolution`
+    /// caps apply.
+    pi_gen: PiGen,
     overlay_program: Option<glow::Program>,
     /// 1×320 RGBA8 texture mirroring `AudioHistory::snapshot_rgba`. Created
     /// up-front (zeros) so binding is always valid; main loop refreshes
@@ -68,8 +75,35 @@ pub struct Pipeline {
     pub postfx: PostFx,
 }
 
+/// Resolve the layer-FBO size for one scene given the parsed
+/// `internal_resolution` and the detected Pi gen. Pi 5 and the desktop dev
+/// box (`Unknown`) always return `None` — they render at the global scanout
+/// dims so previously down-scaled scenes scale up to the GPU's headroom.
+/// Roadmap 28a.
+fn resolved_scene_size(
+    declared: Option<(u32, u32)>,
+    pi_gen: PiGen,
+) -> Option<(u32, u32)> {
+    if pi_gen >= PiGen::Pi5 {
+        return None;
+    }
+    declared
+}
+
 impl Pipeline {
+    /// Backwards-compat constructor — assumes desktop dev (`PiGen::Unknown`).
+    /// Production callers should use `new_for_gen` with the detected gen so
+    /// per-scene resolution caps gate correctly.
     pub fn new(gl: Arc<glow::Context>, width: u32, height: u32) -> Result<Self> {
+        Self::new_for_gen(gl, width, height, PiGen::Unknown)
+    }
+
+    pub fn new_for_gen(
+        gl: Arc<glow::Context>,
+        width: u32,
+        height: u32,
+        pi_gen: PiGen,
+    ) -> Result<Self> {
         let fbo_a = [
             Fbo::new(gl.clone(), width, height)?,
             Fbo::new(gl.clone(), width, height)?,
@@ -108,6 +142,7 @@ impl Pipeline {
             quad_vao,
             scene_programs: BTreeMap::new(),
             scene_sizes: BTreeMap::new(),
+            pi_gen,
             overlay_program: None,
             audio_history_texture,
             postfx,
@@ -188,7 +223,7 @@ impl Pipeline {
         if let Some(old) = self.scene_programs.insert(name.to_string(), cached) {
             unsafe { self.gl.delete_program(old.program) };
         }
-        match scene.meta.internal_resolution_size() {
+        match resolved_scene_size(scene.meta.internal_resolution_size(), self.pi_gen) {
             Some(size) => {
                 self.scene_sizes.insert(name.to_string(), size);
             }
@@ -699,6 +734,32 @@ mod tests {
     #[test]
     fn audio_history_constant_matches_audio_module() {
         assert_eq!(AUDIO_HISTORY_LEN, crate::audio::history::HISTORY_LEN);
+    }
+
+    #[test]
+    fn resolved_scene_size_honours_caps_below_pi5() {
+        // Pi 3 / Pi 4 honour the per-scene cap (Pi-3 tuning era).
+        assert_eq!(
+            super::resolved_scene_size(Some((180, 120)), PiGen::Pi3),
+            Some((180, 120))
+        );
+        assert_eq!(
+            super::resolved_scene_size(Some((180, 120)), PiGen::Pi4),
+            Some((180, 120))
+        );
+    }
+
+    #[test]
+    fn resolved_scene_size_drops_caps_on_pi5_and_unknown() {
+        // Pi 5 and the desktop dev box (Unknown) ignore the per-scene cap so
+        // previously down-scaled scenes scale up to native scanout.
+        assert_eq!(super::resolved_scene_size(Some((180, 120)), PiGen::Pi5), None);
+        assert_eq!(
+            super::resolved_scene_size(Some((180, 120)), PiGen::Unknown),
+            None
+        );
+        // Absent cap stays absent regardless of gen.
+        assert_eq!(super::resolved_scene_size(None, PiGen::Pi3), None);
     }
 
     fn loaded(name: &str, body: &str) -> LoadedScene {
