@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
+- **2026-05-15** Numpad menu arrows + `000+±` param chord — rotated pad now navigates menus via centre cross (`6/4/8/2` → U/D/L/R) and steps params with `000`-held xfade keys. Slots screen drops numpad digit-jump (was misaligned with rotation).
 - **2026-05-12** Post-FX phase 2: `PostFxScreen` (toggle + dive) and `PostFxParamScreen` (Up/Down picks param, Left/Right nudges 2% of range, `r` resets) wired into the F4 Settings menu. Eager-save to `<state_dir>/postfx.toml` on every mutation; load layers user overrides on top of each pass's `enabled_by_default`. Two new passes: Chromatic Aberration (distance-scaled RGB split) and Bayer Dither (4×4 ordered, 16-arm if-chain because GLSL ES 1.00 lacks array-constructor literals). 182 tests green.
 - **2026-05-12** Post-FX phase 1: `src/render/postfx.rs` (PostFx + 2-FBO ping-pong + per-pass `ParamMap`), `shaders/postfx_prelude.glsl`, three passes — Vignette (on), Grain (on), Pixelate (off). Pipeline reroutes blend → chain → swapchain only when at least one pass is enabled; empty chain = old fast path. Audio routing on post-FX params works for free via existing `effective_slot_values`. Memory cost on Pi 3B+: +2.64 MB.
-- **2026-05-12** Blend modes tier 1: 7 new arms in `shaders/blend.glsl` — Overlay, HardLight, Lighten, Darken, Exclusion, Subtract, LinearBurn (12 total). Shader refactored to `mix(a, OP, xfade)` shape with a single trailing `else` fallback. `BlendMode` parse adds canonical names + short aliases matching the 6-char status tags.
 
 ## Design Notes
 
