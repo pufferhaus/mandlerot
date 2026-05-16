@@ -177,6 +177,16 @@ impl Pipeline {
         self.last_uploaded_seq = 0;
     }
 
+    /// Current capture status — `NoDevice` when no handle is attached or the
+    /// worker hasn't reported in yet. Cheap (an `ArcSwap` load); call once per
+    /// frame and thread the value through render / panel contexts.
+    pub fn video_status(&self) -> crate::video::VideoStatus {
+        self.video_handle
+            .as_ref()
+            .map(|h| h.status())
+            .unwrap_or(crate::video::VideoStatus::NoDevice)
+    }
+
     /// Load every paired `<dir>/*.{glsl,toml}` as a post-FX pass. Safe to call
     /// at startup before any frames render; failures on individual passes are
     /// logged and skipped so a single broken shader doesn't kill the chain.

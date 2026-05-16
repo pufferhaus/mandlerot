@@ -210,6 +210,18 @@ fn main() -> anyhow::Result<()> {
     // Compile the baked safe-scene up front so PANIC always has a working
     // fallback even if the user's scene compile breaks.
     pipeline.upsert_scene("__safe__", library.require("__safe__")?)?;
+    // Compile the baked __video__ scene up front so GLSL errors surface at
+    // boot, not at the first slot bind. Parity with __safe__.
+    pipeline.upsert_scene("__video__", library.require("__video__")?)?;
+    // Start the video capture worker and hand the read-side to the pipeline.
+    // start_capture is non-blocking; the worker reports status via ArcSwap.
+    let video_prefs = mandlerot::video::VideoPrefs {
+        device: None,
+        target_width: 720,
+        target_height: 480,
+    };
+    let video = mandlerot::video::start_capture(video_prefs);
+    pipeline.attach_video_handle(Some(video));
     pipeline.upsert_scene(
         &state.layer_a.scene_name,
         library.require(&state.layer_a.scene_name)?,
@@ -547,6 +559,11 @@ fn main() -> anyhow::Result<()> {
             w.pet();
         }
 
+        // Snapshot capture status once per frame — cheap (ArcSwap load) and
+        // gives a stable value to thread through the input + render contexts
+        // and the panel snapshot below.
+        let video_status = pipeline.video_status();
+
         // Hot-reload
         let mut scenes_dirty = false;
         while let Some(evt) = watcher.try_recv() {
@@ -668,7 +685,7 @@ fn main() -> anyhow::Result<()> {
                     state_dir: &state_dir,
                     audio: &audio_params,
                     postfx: Some(&mut pipeline.postfx),
-                    video_status: mandlerot::video::VideoStatus::NoDevice,
+                    video_status,
                 };
                 ui_stack.handle_key(&key, &mut ctx);
                 continue;
@@ -761,16 +778,14 @@ fn main() -> anyhow::Result<()> {
                 postfx: Some(&pipeline.postfx),
                 filtered_scenes: filtered,
                 pi_gen,
-                video_status: mandlerot::video::VideoStatus::NoDevice,
+                video_status,
             };
             ui_stack.render_top(&rctx)
         } else {
             None
         };
         let mut panel = mandlerot::status::snapshot::PanelSnapshot::from_state(&state);
-        // Task 10 will replace this with `pipeline.video_status()`. Stays
-        // NoDevice for now so the `VID:--` chip renders on every frame.
-        panel.video_status = mandlerot::video::VideoStatus::NoDevice;
+        panel.video_status = video_status;
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
             panel,
             menu_grid,
