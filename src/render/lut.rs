@@ -37,6 +37,14 @@ pub fn decode_lut_png(bytes: &[u8]) -> Result<Vec<u8>> {
     reader
         .next_frame(&mut raw)
         .map_err(|e| Error::Backend(format!("LUT png next_frame: {e}")))?;
+    let expected = 256usize * 16 * bpp;
+    if raw.len() != expected {
+        return Err(Error::Backend(format!(
+            "LUT decoded buffer was {} bytes, expected {}",
+            raw.len(),
+            expected
+        )));
+    }
     if bpp == 4 {
         Ok(raw)
     } else {
@@ -51,11 +59,9 @@ pub fn decode_lut_png(bytes: &[u8]) -> Result<Vec<u8>> {
 
 /// Read a LUT PNG file and decode it.
 pub fn decode_lut_file(path: &Path) -> Result<Vec<u8>> {
-    let mut f = File::open(path)
-        .map_err(|e| Error::Backend(format!("opening LUT {}: {e}", path.display())))?;
+    let mut f = File::open(path)?;
     let mut bytes = Vec::new();
-    f.read_to_end(&mut bytes)
-        .map_err(|e| Error::Backend(format!("reading LUT {}: {e}", path.display())))?;
+    f.read_to_end(&mut bytes)?;
     decode_lut_png(&bytes)
 }
 
@@ -110,6 +116,6 @@ mod tests {
     fn decode_lut_png_rejects_gibberish() {
         let err = decode_lut_png(b"not a png").expect_err("gibberish must fail");
         let msg = format!("{err}");
-        assert!(msg.contains("png"), "msg={msg}");
+        assert!(msg.contains("LUT png read_info"), "msg={msg}");
     }
 }
