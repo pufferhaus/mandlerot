@@ -128,6 +128,19 @@ pub fn load_lut_png(gl: &glow::Context, path: &Path) -> Result<glow::Texture> {
     upload_lut_texture(gl, &rgba)
 }
 
+/// Resolve a raw param-slot value to a valid index into a LUT vector.
+/// Returns None if there are zero LUTs. Clamps non-finite, negative,
+/// and over-large values to `[0, len-1]`.
+pub fn pick_lut_index(slot_value: f32, lut_count: usize) -> Option<usize> {
+    if lut_count == 0 {
+        return None;
+    }
+    let last = lut_count - 1;
+    let v = if slot_value.is_finite() { slot_value } else { 0.0 };
+    let idx = v.max(0.0).round() as usize;
+    Some(idx.min(last))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +193,32 @@ mod tests {
         let err = decode_lut_png(b"not a png").expect_err("gibberish must fail");
         let msg = format!("{err}");
         assert!(msg.contains("LUT png read_info"), "msg={msg}");
+    }
+
+    #[test]
+    fn pick_lut_index_returns_none_for_empty() {
+        assert_eq!(pick_lut_index(0.0, 0), None);
+        assert_eq!(pick_lut_index(5.0, 0), None);
+    }
+
+    #[test]
+    fn pick_lut_index_clamps_overflow_to_last() {
+        assert_eq!(pick_lut_index(99.0, 3), Some(2));
+    }
+
+    #[test]
+    fn pick_lut_index_clamps_negative_to_zero() {
+        assert_eq!(pick_lut_index(-1.0, 4), Some(0));
+    }
+
+    #[test]
+    fn pick_lut_index_rounds_fractional() {
+        assert_eq!(pick_lut_index(1.4, 4), Some(1));
+        assert_eq!(pick_lut_index(1.6, 4), Some(2));
+    }
+
+    #[test]
+    fn pick_lut_index_handles_nan() {
+        assert_eq!(pick_lut_index(f32::NAN, 3), Some(0));
     }
 }
