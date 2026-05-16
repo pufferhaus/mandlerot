@@ -110,10 +110,14 @@ fn matches_scene_extension(p: &Path) -> bool {
 }
 
 fn matches_postfx_extension(p: &Path) -> bool {
-    matches!(
-        p.extension().and_then(|s| s.to_str()),
-        Some("glsl") | Some("toml") | Some("png")
-    )
+    p.extension()
+        .and_then(|s| s.to_str())
+        .map(|e| {
+            e.eq_ignore_ascii_case("glsl")
+                || e.eq_ignore_ascii_case("toml")
+                || e.eq_ignore_ascii_case("png")
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
