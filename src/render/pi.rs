@@ -47,28 +47,63 @@ impl PiCard {
         Err(Error::Backend("no DRM device found".into()))
     }
 
-    /// Find the first connected composite (TV) connector.
-    pub fn find_composite_connector(&self) -> Result<connector::Info> {
+    /// Pick the display connector for this run. Auto-priority:
+    ///   1. HDMI-A (or HDMI-B / DisplayPort) reporting `Connected` — DRM
+    ///      can actually detect HDMI hot-plug, so a plugged HDMI cable is
+    ///      strong signal the operator wants HDMI.
+    ///   2. Composite / TV / SVideo with state != Disconnected. Analog
+    ///      outputs have no hot-plug detect so DRM reports `Unknown`; we
+    ///      take that as "use it" since the rig usually has the cable
+    ///      hard-wired to a CRT.
+    ///
+    /// This means: production rig (composite cable to TV, no HDMI) stays
+    /// on composite. Pull the composite cable, plug in HDMI, next boot
+    /// switches to HDMI automatically.
+    pub fn find_display_connector(&self) -> Result<connector::Info> {
         let resources = self
             .resource_handles()
             .map_err(|e| Error::Backend(format!("resources: {e}")))?;
+
+        // Pass 1: any digital output that's actually connected.
         for handle in resources.connectors() {
             let info = self
                 .get_connector(*handle, false)
                 .map_err(|e| Error::Backend(format!("connector: {e}")))?;
-            // Composite/TV/SVideo are analog with no hot-plug detect, so the
-            // KMS state is always "Unknown" — accept that as good. Reject
-            // explicit Disconnected.
+            if info.state() != connector::State::Connected {
+                continue;
+            }
+            use connector::Interface::*;
+            if matches!(info.interface(), HDMIA | HDMIB | DisplayPort) {
+                tracing::info!(
+                    interface = ?info.interface(),
+                    "display: HDMI/DP detected as connected, using digital output"
+                );
+                return Ok(info);
+            }
+        }
+
+        // Pass 2: analog composite (the default rig wiring). State is
+        // Unknown for VEC since there's no signaling — accept anything
+        // that isn't explicitly Disconnected.
+        for handle in resources.connectors() {
+            let info = self
+                .get_connector(*handle, false)
+                .map_err(|e| Error::Backend(format!("connector: {e}")))?;
             if info.state() == connector::State::Disconnected {
                 continue;
             }
             use connector::Interface::*;
             if matches!(info.interface(), Composite | TV | SVideo) {
+                tracing::info!(
+                    interface = ?info.interface(),
+                    "display: no HDMI connected, falling back to composite"
+                );
                 return Ok(info);
             }
         }
         Err(Error::Backend(
-            "no connected composite/TV connector found".into(),
+            "no usable display connector found (no HDMI Connected and no composite/TV/SVideo)"
+                .into(),
         ))
     }
 }
@@ -97,7 +132,7 @@ pub struct PiContext {
 impl PiContext {
     pub fn create(width_hint: u32, height_hint: u32) -> Result<Self> {
         let card = PiCard::open_default()?;
-        let conn = card.find_composite_connector()?;
+        let conn = card.find_display_connector()?;
         let mode = conn
             .modes()
             .iter()
