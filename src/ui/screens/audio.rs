@@ -124,11 +124,27 @@ impl Screen for AudioSettingsScreen {
             let val_str = format_val(v);
             g.write(row, 23 + bar_w + 2, ATTR_NORMAL, &val_str);
         }
-        draw_footer(g, "^v select   <> adjust   r reset   Esc back");
+
+        // Device row (one past the last knob).
+        let device_row = start_row + KNOBS.len() * 2;
+        let is_cursor = self.cursor as usize == KNOBS.len();
+        let attr = if is_cursor { ATTR_INVERSE } else { ATTR_NORMAL };
+        let marker = if is_cursor { '>' } else { ' ' };
+        g.set(device_row, 3, Cell::new(marker, ATTR_BRIGHT));
+        let dev = ctx.audio.device();
+        let label = if dev.is_empty() {
+            "<host default>".to_string()
+        } else {
+            dev
+        };
+        g.write(device_row, 5, attr, &format!("device: {label}"));
+
+        draw_footer(g, "^v select   <> adjust   r reset   Enter pick   Esc back");
     }
 
     fn handle_key(&mut self, key: &str, ctx: &mut ScreenCtx) -> ScreenResult {
         let i = self.cursor as usize;
+        let on_device_row = i == KNOBS.len();
         match key {
             "Esc" | "Backspace" => ScreenResult::Pop,
             "Up" => {
@@ -138,22 +154,39 @@ impl Screen for AudioSettingsScreen {
                 ScreenResult::Continue
             }
             "Down" => {
-                if (self.cursor as usize) + 1 < KNOBS.len() {
+                if (self.cursor as usize) < KNOBS.len() {
                     self.cursor += 1;
                 }
                 ScreenResult::Continue
             }
             "Left" => {
+                if on_device_row {
+                    return ScreenResult::Continue;
+                }
                 nudge(ctx, i, -1.0);
                 ScreenResult::Continue
             }
             "Right" => {
+                if on_device_row {
+                    return ScreenResult::Continue;
+                }
                 nudge(ctx, i, 1.0);
                 ScreenResult::Continue
             }
             "r" | "R" => {
+                if on_device_row {
+                    return ScreenResult::Continue;
+                }
                 write(ctx.audio, i, KNOBS[i].default);
                 let _ = ctx.audio.save(ctx.state_dir);
+                ScreenResult::Continue
+            }
+            "Enter" | "NumpadEnter" => {
+                if on_device_row {
+                    return ScreenResult::Push(Box::new(
+                        crate::ui::screens::audio_device::AudioDeviceScreen::new(),
+                    ));
+                }
                 ScreenResult::Continue
             }
             _ => ScreenResult::Continue,
