@@ -57,6 +57,7 @@ _(none currently tracked)_
 | 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ☐ | `src/render/postfx.rs`, `postfx/{bloom,crt}.{glsl,toml}` |
 | 26d | Post-FX phase 4: per-Look post-FX (Look schema bump to v2) | ☐ | `src/preset/store.rs`, `src/apply.rs` |
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
+| 28 | Pi-generation autodetect + tiered shaders/defaults (Pi 3 / 4 / 5 capability classes; require hardware in hand to verify each tier) | ☐ | `src/platform.rs` (new), `src/render/pipeline.rs`, `src/scene/meta.rs`, `src/config.rs`, `scenes/**/*.toml`, `.docs/EFFECTS-CATALOG.md` |
 
 Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on completion.
 
