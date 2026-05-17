@@ -1,0 +1,13 @@
+name = "fire"
+display_name = "Fire"
+keyable = true
+
+[[params]]
+slot = 0
+name = "decay"
+min = 0.0
+max = 1.0
+default = 0.3
+audio_route = "bass"
+audio_amount = 0.2
+audio_polarity = -1.0

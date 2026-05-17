@@ -16,6 +16,8 @@ use crate::render::postfx::PostFx;
 use crate::status::TextScreen;
 
 pub mod screens;
+#[cfg(test)]
+mod screen_harness;
 
 /// Context passed to a screen each time it handles a key. Holds the
 /// mutable bits a screen may need to act on (write a binding, look up
@@ -28,7 +30,7 @@ pub struct ScreenCtx<'a> {
     /// Live post-FX chain. Production main loop always sets this. Tests
     /// that don't exercise post-FX screens pass `None` to avoid having to
     /// build a GL context just to construct a `PostFx`.
-    pub postfx: Option<&'a mut PostFx>,
+    pub postfx: Option<&'a mut dyn crate::render::postfx::PostFxController>,
     /// Live ChromakeyState. None in screens / tests that don't need to mutate it.
     pub chromakey: Option<&'a mut crate::render::chromakey::ChromakeyState>,
     /// Live video-capture status, surfaced so screens that want to label

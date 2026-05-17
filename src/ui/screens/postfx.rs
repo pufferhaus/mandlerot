@@ -304,7 +304,7 @@ impl Screen for PostFxParamScreen {
 fn sync_active_look(
     looks: Option<&mut crate::preset::LookStore>,
     slot: Option<u8>,
-    pfx: &crate::render::postfx::PostFx,
+    pfx: &dyn crate::render::postfx::PostFxController,
 ) {
     if let Some(looks) = looks {
         if let Err(e) = looks.after_postfx_mutation(slot, pfx.snapshot()) {
@@ -314,7 +314,7 @@ fn sync_active_look(
 }
 
 fn nudge(
-    pfx: &mut crate::render::postfx::PostFx,
+    pfx: &mut dyn crate::render::postfx::PostFxController,
     pass_idx: usize,
     d: &crate::scene::ParamDef,
     dir: f32,

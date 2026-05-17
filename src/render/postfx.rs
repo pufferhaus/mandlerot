@@ -211,6 +211,43 @@ pub struct PostFx {
     pi_gen: PiGen,
 }
 
+/// Minimal interface that `PostFxScreen` and `PostFxParamScreen` use from
+/// `PostFx`. Decoupled so screens can be tested without a GL context.
+pub trait PostFxController {
+    fn passes(&self) -> &[PostFxPass];
+    fn toggle(&mut self, idx: usize);
+    fn pass_params_mut(&mut self, idx: usize) -> Option<&mut crate::scene::ParamMap>;
+    fn save_state(&self, dir: &std::path::Path) -> crate::Result<()>;
+    fn snapshot(&self) -> crate::preset::store::PostFxSnapshot;
+    fn apply_snapshot(&mut self, snap: &crate::preset::store::PostFxSnapshot);
+}
+
+impl PostFxController for PostFx {
+    fn passes(&self) -> &[PostFxPass] {
+        &self.passes
+    }
+
+    fn toggle(&mut self, idx: usize) {
+        self.toggle(idx);
+    }
+
+    fn pass_params_mut(&mut self, idx: usize) -> Option<&mut crate::scene::ParamMap> {
+        self.pass_params_mut(idx)
+    }
+
+    fn save_state(&self, dir: &std::path::Path) -> crate::Result<()> {
+        self.save_state(dir)
+    }
+
+    fn snapshot(&self) -> crate::preset::store::PostFxSnapshot {
+        self.snapshot()
+    }
+
+    fn apply_snapshot(&mut self, snap: &crate::preset::store::PostFxSnapshot) {
+        self.apply_snapshot(snap);
+    }
+}
+
 impl PostFx {
     /// Construct an empty chain — `passes` empty, two FBOs allocated.
     pub fn new(gl: Arc<glow::Context>, width: u32, height: u32, pi_gen: PiGen) -> Result<Self> {
