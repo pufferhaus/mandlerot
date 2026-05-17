@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
+- **2026-05-16** Post-FX HQ Bloom (Pi 4+) + CRT overlay (26c) — new `bloom_hq` built-in pass (TOML-only meta, 4 stages dispatched in `PostFx::run`: downsample+bright → H-blur → V-blur → composite) over 2 new half-res FBOs, 4 shader programs cached at `PostFx::new`, gated `min_pi_gen = "Pi4"`. New `crt` user pass with scanlines + barrel curvature + aperture mask + corner darken + asymmetric phosphor decay (max-blend on `u_prev`). `PostFxPass.program` is now `Option<glow::Program>` so built-ins can carry `None`. Loader carve-out via `BUILTIN_POSTFX_PASSES`. 249 tests green. Spec at `docs/superpowers/specs/2026-05-16-postfx-bloom-hq-crt-design.md`.
 - **2026-05-16** Post-FX LUT colour grade + `postfx/` hot-reload (26b') — new `src/render/lut.rs` (PNG decode + GL upload via `png` crate), `postfx/lut.{glsl,toml}` pass (256×16 strip LUT, manual B-axis interp, NEAREST in R/G), 2 baked LUTs (`identity.png`, `teal_orange.png`), param-indexed picker via slot 0 (Rust-side, shader-blind), `u_lut` uniform bound to TU4 by `PostFx::run`, `HotReloader::watch_postfx()` + `PostFxTouched/Removed` variants polled in the main loop. 247 tests green. Spec at `docs/superpowers/specs/2026-05-16-postfx-lut-design.md`.
 - **2026-05-16** Video input (item 24) — new `src/video/` (nokhwa-backed capture thread, `ArcSwap<Arc<VideoFrame>>` handoff), `u_video` + `u_video_uv_scale` in the GLSL prelude (TU3), baked `__video__` scene, demo `video_glitch` scene, `VID:` status chip, F4 → Audio → Device picker for routing dongle audio. Continuous capture with 5s NoDevice retry + 1s stale threshold. Spec at `docs/superpowers/specs/2026-05-16-video-input-design.md`.
-- **2026-05-16** Pi-gen detect + per-scene caps (28a) — new `src/platform.rs` (`PiGen::detect`, env override), `min_pi_gen` filter on `SceneLibrary::load_dir_for_gen`, pipeline drops per-scene `internal_resolution` caps on Pi 5 / Unknown so previously down-scaled scenes scale up to native, `install.sh` writes per-gen `MANDLEROT_RENDER_SCALE` + skips `composite=1` on Pi 4/5. Scene-list menu surfaces "N visible / M hidden on PiX". 218 tests green.
 
 ## Design Notes
 
@@ -54,7 +54,7 @@ _(none currently tracked)_
 | 26a | Post-FX phase 1: chain skeleton + Vignette/Grain/Pixelate passes (no UI, no persistence) | ✅ | `src/render/postfx.rs`, `src/render/pipeline.rs`, `shaders/postfx_prelude.glsl`, `postfx/*.{glsl,toml}` |
 | 26b | Post-FX phase 2: UI (F4→Post-FX), `postfx.toml` persistence, Chromatic Aberration + Bayer Dither | ✅ | `src/ui/screens/postfx.rs`, `src/render/postfx.rs`, `postfx/{chromatic,dither}.{glsl,toml}` |
 | 26b' | Post-FX phase 2b: LUT colour grade (needs PNG loader + aux texture) + hot-reload of `postfx/` dir | ✅ | `src/render/postfx.rs`, `src/hot_reload.rs`, `postfx/lut.{glsl,toml}` |
-| 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ☐ | `src/render/postfx.rs`, `postfx/{bloom,crt}.{glsl,toml}` |
+| 26c | Post-FX phase 3: Bloom (half-res blur) + CRT overlay | ✅ | `src/render/postfx.rs`, `postfx/{bloom_hq,crt}.{glsl,toml}` |
 | 26d | Post-FX phase 4: per-Look post-FX (Look schema bump to v2) | ☐ | `src/preset/store.rs`, `src/apply.rs` |
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ☐ | `src/render/chromakey.rs`, `src/scene/meta.rs`, `shaders/blend.glsl`, `src/ui/screens/chromakey.rs` |
 | 28a | Pi-gen detect + per-scene caps (PiGen runtime detect, `min_pi_gen` filter, ignore per-scene `internal_resolution` on Pi 5, install-time `render_scale` per gen, skip composite overlay on Pi 5) | ✅ | `src/platform.rs` (new), `src/scene/{meta,library}.rs`, `src/render/pipeline.rs`, `src/ui/screens/scene_list.rs`, `deploy/install.sh`, `src/main.rs` |
