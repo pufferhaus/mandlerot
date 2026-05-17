@@ -21,6 +21,7 @@ use std::sync::Arc;
 use glow::HasContext;
 
 use crate::error::Result;
+use crate::platform::PiGen;
 use crate::scene::{ParamMap, SceneMeta};
 use crate::state::SharedState;
 
@@ -204,11 +205,14 @@ pub struct PostFx {
     // shared across all bloom_hq invocations.
     bloom_half: [Fbo; 2],
     bloom_programs: BloomHqPrograms,
+    /// Detected Pi generation. Passed in from the pipeline so `load_dir` can
+    /// apply the same `min_pi_gen` filter as `SceneLibrary::load_dir_for_gen`.
+    pi_gen: PiGen,
 }
 
 impl PostFx {
     /// Construct an empty chain — `passes` empty, two FBOs allocated.
-    pub fn new(gl: Arc<glow::Context>, width: u32, height: u32) -> Result<Self> {
+    pub fn new(gl: Arc<glow::Context>, width: u32, height: u32, pi_gen: PiGen) -> Result<Self> {
         let pp = [
             Fbo::new(gl.clone(), width, height)?,
             Fbo::new(gl.clone(), width, height)?,
@@ -282,6 +286,7 @@ impl PostFx {
             summary_cache: String::new(),
             bloom_half,
             bloom_programs,
+            pi_gen,
         })
     }
 
@@ -306,6 +311,14 @@ impl PostFx {
             };
             match ext {
                 Some("glsl") => {
+                    if is_builtin_postfx(&stem) {
+                        tracing::warn!(
+                            "postfx/{}.glsl ignored — '{}' is a built-in pass; \
+                             remove the .glsl to use the built-in",
+                            stem, stem
+                        );
+                        continue;
+                    }
                     let meta_path = path.with_extension("toml");
                     if !meta_path.exists() {
                         tracing::warn!("postfx {} has no .toml metadata, skipping", path.display());
@@ -332,6 +345,17 @@ impl PostFx {
                 let meta_str = std::fs::read_to_string(toml_path)?;
                 let meta = SceneMeta::parse(&meta_str, &toml_path.display().to_string())?;
                 meta.validate()?;
+                if let Some(required) = meta.min_pi_gen {
+                    if required > self.pi_gen {
+                        tracing::info!(
+                            "postfx '{}' requires {} (detected {}); filtered",
+                            name,
+                            required.as_str(),
+                            self.pi_gen.as_str()
+                        );
+                        return Ok(());
+                    }
+                }
                 if let Some(glsl_path) = glsl {
                     let body = std::fs::read_to_string(glsl_path)?;
                     self.upsert(name, &body, meta, toml_path.clone())
@@ -723,7 +747,12 @@ impl PostFx {
     /// dispatches them via a hardcoded code path.
     fn upsert_builtin(&mut self, name: &str, meta: SceneMeta, source_path: PathBuf) -> Result<()> {
         if let Some(existing) = self.passes.iter_mut().find(|p| p.name == name) {
-            // Built-in passes are never compiled — no GL program to delete.
+            // If this stem was previously a user pass (Some(program)), the user
+            // shader is being demoted to built-in via hot-reload. Free the orphaned
+            // GL handle before clobbering the slot.
+            if let Some(old) = existing.program.take() {
+                unsafe { self.gl.delete_program(old) };
+            }
             existing.fragment_body = String::new();
             existing.params = ParamMap::from_scene(&meta);
             existing.meta = meta;
