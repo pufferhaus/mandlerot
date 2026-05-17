@@ -34,7 +34,7 @@ use mandlerot::input::double_tap::DoubleTap;
 use mandlerot::input::keymap::{KeyMap, Modifier};
 use mandlerot::input::mock::MockInput;
 use mandlerot::preset::{LookStore, SlotBindings};
-use mandlerot::ui::{RenderCtx, ScreenCtx, ScreenStack};
+use mandlerot::ui::{RenderCtx, ScreenCtx, ScreenEvent, ScreenStack};
 use mandlerot::render::pipeline::Pipeline;
 use mandlerot::render::postfx::PostFx;
 use mandlerot::render::target::RenderTarget;
@@ -731,6 +731,30 @@ fn main() -> anyhow::Result<()> {
                     looks: Some(&mut looks),
                 };
                 ui_stack.handle_key(&key, &mut ctx);
+                if let Some(event) = ui_stack.take_pending() {
+                    match event {
+                        ScreenEvent::RecallLook(slot) => {
+                            let res = looks.recall(slot, &mut state, &library, |snap| {
+                                pipeline.postfx.apply_snapshot(snap);
+                            });
+                            match res {
+                                Ok(()) => {
+                                    state.active_look_slot = Some(slot);
+                                    state.look_dirty = false;
+                                }
+                                Err(e) => tracing::warn!("look recall slot {slot}: {e}"),
+                            }
+                        }
+                        ScreenEvent::DeleteLook(slot) => {
+                            if let Err(e) = looks.delete(slot) {
+                                tracing::debug!("look delete slot {slot}: {e}");
+                            }
+                            if state.active_look_slot == Some(slot) {
+                                state.active_look_slot = None;
+                            }
+                        }
+                    }
+                }
                 continue;
             }
             if let Some(action) = keymap.lookup(&key, modifier, &state) {
@@ -841,6 +865,7 @@ fn main() -> anyhow::Result<()> {
                 video_status,
                 active_look_slot: state.active_look_slot,
                 bound_state,
+                looks_view: None,
             };
             ui_stack.render_top(&rctx)
         } else {

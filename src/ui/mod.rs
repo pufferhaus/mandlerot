@@ -66,6 +66,10 @@ pub struct RenderCtx<'a> {
     /// Read off LookStore at frame build time so the screen can render the
     /// bind line without holding a LookStore borrow.
     pub bound_state: Option<(u8, bool, bool)>,
+    /// Per-slot (name, saved_at) borrow for the looks screen. None when no
+    /// looks store is present at frame-build time. Inner Option is None
+    /// when that slot is empty.
+    pub looks_view: Option<&'a [Option<(&'a str, &'a str)>]>,
 }
 
 /// Result of a single key delivered to a screen.
@@ -78,6 +82,12 @@ pub enum ScreenResult {
     /// Push a new screen on top. The old screen is preserved underneath and
     /// will become active again once the new one Pops.
     Push(Box<dyn Screen>),
+    /// Request the main loop to recall the Look in this slot and update
+    /// active_look_slot. The screen stays open.
+    RecallLook(u8),
+    /// Request the main loop to delete the Look in this slot. If it was the
+    /// active look, the main loop clears active_look_slot.
+    DeleteLook(u8),
 }
 
 pub trait Screen: Send {
@@ -111,9 +121,19 @@ fn translate_numpad(key: &str) -> &str {
     }
 }
 
+/// An event that the screen produced but that must be handled by the main
+/// loop (because it needs access to SharedState and SceneLibrary, which
+/// cannot be in ScreenCtx without creating conflicting field borrows).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScreenEvent {
+    RecallLook(u8),
+    DeleteLook(u8),
+}
+
 #[derive(Default)]
 pub struct ScreenStack {
     stack: Vec<Box<dyn Screen>>,
+    pending: Option<ScreenEvent>,
 }
 
 impl ScreenStack {
@@ -140,6 +160,7 @@ impl ScreenStack {
 
     /// Deliver a key to the top screen and apply the resulting action.
     /// Returns `true` if the key was consumed (the menu was open).
+    /// After this call, check `take_pending()` to drain any deferred event.
     pub fn handle_key(&mut self, key: &str, ctx: &mut ScreenCtx) -> bool {
         if self.stack.is_empty() {
             return false;
@@ -157,8 +178,19 @@ impl ScreenStack {
             ScreenResult::Push(s) => {
                 self.stack.push(s);
             }
+            ScreenResult::RecallLook(slot) => {
+                self.pending = Some(ScreenEvent::RecallLook(slot));
+            }
+            ScreenResult::DeleteLook(slot) => {
+                self.pending = Some(ScreenEvent::DeleteLook(slot));
+            }
         }
         true
+    }
+
+    /// Take a pending deferred event, if any. Call once after `handle_key`.
+    pub fn take_pending(&mut self) -> Option<ScreenEvent> {
+        self.pending.take()
     }
 
     /// Render the top screen into a fresh `TextScreen`. `None` if no screen
@@ -230,6 +262,7 @@ mod tests {
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             bound_state: None,
+            looks_view: None,
         }
     }
 

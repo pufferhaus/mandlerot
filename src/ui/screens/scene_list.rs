@@ -211,6 +211,7 @@ mod tests {
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             bound_state: None,
+            looks_view: None,
         }
     }
 
