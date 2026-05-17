@@ -34,6 +34,16 @@ use super::shader::{assemble_postfx_fragment, QUAD_VERT};
 /// internal to the chain pipeline; no use putting it in `shaders/`.
 const BLIT_FRAG: &str = "#version 100\nprecision mediump float;\nuniform sampler2D u_input;\nvarying vec2 v_uv;\nvoid main(){ gl_FragColor = texture2D(u_input, v_uv); }\n";
 
+/// Pass names whose shader bodies are compiled from Rust-side constants
+/// rather than from a paired `.glsl` file. Loader skips the missing-.glsl
+/// warning for these; their TOML still ships under postfx/ to expose
+/// params + enabled state + min_pi_gen via the existing scene-meta path.
+const BUILTIN_POSTFX_PASSES: &[&str] = &["bloom_hq"];
+
+fn is_builtin_postfx(name: &str) -> bool {
+    BUILTIN_POSTFX_PASSES.contains(&name)
+}
+
 const BLOOM_DOWNSAMPLE_FRAG: &str = r#"
 vec3 bright_pass(vec3 c, float t) {
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
@@ -279,36 +289,55 @@ impl PostFx {
     /// alphabetical by stem — deterministic so users can predict the chain.
     /// Reordering UI lands in a later phase.
     pub fn load_dir(&mut self, dir: &Path) -> Result<()> {
-        let mut found: BTreeMap<String, (PathBuf, PathBuf)> = BTreeMap::new();
+        let mut found: BTreeMap<String, (Option<PathBuf>, PathBuf)> = BTreeMap::new();
         if !dir.exists() {
             return Ok(());
         }
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) != Some("glsl") {
-                continue;
-            }
+            // Two acceptable kinds:
+            //   1. user pass — paired .glsl + .toml
+            //   2. built-in pass — .toml only (name must be in BUILTIN_POSTFX_PASSES)
+            let ext = path.extension().and_then(|s| s.to_str());
             let stem = match path.file_stem().and_then(|s| s.to_str()) {
                 Some(s) => s.to_string(),
                 None => continue,
             };
-            let meta_path = path.with_extension("toml");
-            if !meta_path.exists() {
-                tracing::warn!("postfx {} has no .toml metadata, skipping", path.display());
-                continue;
+            match ext {
+                Some("glsl") => {
+                    let meta_path = path.with_extension("toml");
+                    if !meta_path.exists() {
+                        tracing::warn!("postfx {} has no .toml metadata, skipping", path.display());
+                        continue;
+                    }
+                    found.insert(stem, (Some(path), meta_path));
+                }
+                Some("toml") => {
+                    if is_builtin_postfx(&stem) {
+                        // Built-in: this .toml stands alone (no .glsl pair needed).
+                        // Don't override a previously-seen pairing — user .glsl + .toml
+                        // for the same stem would have already populated `found`.
+                        found.entry(stem.clone()).or_insert((None, path));
+                    }
+                    // Non-builtin lone .toml: ignored (paired .glsl scan picks it up if present).
+                }
+                _ => {}
             }
-            found.insert(stem, (path, meta_path));
         }
         // 1. Upsert each discovered pass. This preserves enable/param state
         //    across hot-reloads and refuses to duplicate existing entries.
         for (name, (glsl, toml_path)) in &found {
             match (|| -> Result<()> {
-                let body = std::fs::read_to_string(glsl)?;
                 let meta_str = std::fs::read_to_string(toml_path)?;
                 let meta = SceneMeta::parse(&meta_str, &toml_path.display().to_string())?;
                 meta.validate()?;
-                self.upsert(name, &body, meta, toml_path.clone())
+                if let Some(glsl_path) = glsl {
+                    let body = std::fs::read_to_string(glsl_path)?;
+                    self.upsert(name, &body, meta, toml_path.clone())
+                } else {
+                    self.upsert_builtin(name, meta, toml_path.clone())
+                }
             })() {
                 Ok(()) => {}
                 Err(e) => tracing::warn!("postfx '{name}': {e}; skipping"),
@@ -582,6 +611,38 @@ impl PostFx {
         Ok(())
     }
 
+    /// Built-in passes (e.g. `bloom_hq`) have no user shader. Their
+    /// meta + params come from disk, but the program is None and run()
+    /// dispatches them via a hardcoded code path.
+    fn upsert_builtin(&mut self, name: &str, meta: SceneMeta, source_path: PathBuf) -> Result<()> {
+        if let Some(existing) = self.passes.iter_mut().find(|p| p.name == name) {
+            // Built-in passes are never compiled — no GL program to delete.
+            existing.fragment_body = String::new();
+            existing.params = ParamMap::from_scene(&meta);
+            existing.meta = meta;
+            existing.source_path = source_path;
+            existing.program = None;
+            return Ok(());
+        }
+        let pass = PostFxPass {
+            name: name.to_string(),
+            enabled: meta.enabled_by_default,
+            params: ParamMap::from_scene(&meta),
+            meta,
+            fragment_body: String::new(),
+            source_path,
+            program: None,
+            // Built-ins never read pass.uniforms at render time, but the
+            // field must be present. Resolve against blit_program (always
+            // valid). Wasted lookups, but only on initial load.
+            uniforms: resolve_postfx_uniforms(&self.gl, self.blit_program),
+            lut_textures: Vec::new(),
+        };
+        self.passes.push(pass);
+        self.refresh_summary();
+        Ok(())
+    }
+
     /// Toggle a pass by index. No-op if out of range.
     pub fn toggle(&mut self, idx: usize) {
         if let Some(p) = self.passes.get_mut(idx) {
@@ -799,21 +860,45 @@ mod tests {
 
     #[test]
     fn ships_postfx_pass_pairs_on_disk() {
-        for name in [
-            "bloom", "chromatic", "dither", "grain", "lut",
-            "pixelate", "trails", "vignette",
-        ] {
+        // Each entry: (name, has_glsl) — built-ins ship TOML only.
+        let entries: &[(&str, bool)] = &[
+            ("bloom",      true),
+            ("bloom_hq",   false),   // built-in: meta only
+            ("chromatic",  true),
+            ("dither",     true),
+            ("grain",      true),
+            ("lut",        true),
+            ("pixelate",   true),
+            ("trails",     true),
+            ("vignette",   true),
+        ];
+        for (name, has_glsl) in entries {
             let glsl = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("postfx")
                 .join(format!("{name}.glsl"));
             let toml = glsl.with_extension("toml");
-            assert!(glsl.exists(), "missing {}", glsl.display());
+            if *has_glsl {
+                assert!(glsl.exists(), "missing {}", glsl.display());
+            } else {
+                assert!(!glsl.exists(), "built-in {} must NOT have a .glsl pair", name);
+            }
             assert!(toml.exists(), "missing {}", toml.display());
             let s = std::fs::read_to_string(&toml).unwrap();
             let m = SceneMeta::parse(&s, &toml.display().to_string()).unwrap();
             m.validate().unwrap();
-            assert_eq!(m.name, name);
+            assert_eq!(m.name, *name);
         }
+    }
+
+    #[test]
+    fn bloom_hq_meta_has_min_pi_gen_pi4() {
+        let toml = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("postfx")
+            .join("bloom_hq.toml");
+        let s = std::fs::read_to_string(&toml).unwrap();
+        let m = SceneMeta::parse(&s, &toml.display().to_string()).unwrap();
+        m.validate().unwrap();
+        assert_eq!(m.min_pi_gen, Some(crate::platform::PiGen::Pi4));
     }
 
     #[test]
@@ -843,7 +928,15 @@ mod tests {
 
         assert_eq!(names_first, names_second, "postfx/ contents must be stable between scans");
         assert!(names_first.contains(&"lut".to_string()), "lut pass must be present");
-        assert_eq!(names_first.len(), 8, "8 postfx passes (was 7 before LUT shipped)");
+        assert_eq!(names_first.len(), 8, "8 user-shader postfx passes (bloom_hq is built-in, TOML-only)");
+        let bloom_hq_toml = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("postfx")
+            .join("bloom_hq.toml");
+        assert!(bloom_hq_toml.exists(), "built-in bloom_hq.toml must ship");
+        let bloom_hq_glsl = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("postfx")
+            .join("bloom_hq.glsl");
+        assert!(!bloom_hq_glsl.exists(), "built-in bloom_hq must NOT have a .glsl pair");
     }
 
     #[test]
