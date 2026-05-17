@@ -426,6 +426,91 @@ impl PostFx {
         &mut self.passes
     }
 
+    /// Built-in 4-stage half-res bloom dispatch. Called from `run()` when
+    /// it encounters a pass named "bloom_hq". Associated function (not
+    /// method) so it can borrow individual PostFx fields disjointly
+    /// alongside the iter borrow on `self.passes`.
+    ///
+    /// Stages:
+    ///   1. downsample + bright_pass: src_texture(full) -> bloom_half[0] (half)
+    ///   2. blur_H:                   bloom_half[0]     -> bloom_half[1]
+    ///   3. blur_V:                   bloom_half[1]     -> bloom_half[0]
+    ///   4. composite: src_texture(full) + u_bloom(half upsample) -> dst_fbo
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_bloom_hq(
+        gl: &glow::Context,
+        bloom_half: &[Fbo; 2],
+        bloom_programs: &BloomHqPrograms,
+        src_texture: glow::Texture,
+        dst_fbo: &Fbo,
+        full_w: u32,
+        full_h: u32,
+        slots: [f32; 9],
+    ) {
+        let half_w = bloom_half[0].width;
+        let half_h = bloom_half[0].height;
+        let threshold = slots[0];
+        let intensity = slots[1];
+        let radius    = slots[2];
+
+        unsafe fn set_f32(gl: &glow::Context, program: glow::Program, name: &str, value: f32) {
+            if let Some(loc) = gl.get_uniform_location(program, name) {
+                gl.uniform_1_f32(Some(&loc), value);
+            }
+        }
+        unsafe fn set_vec2(gl: &glow::Context, program: glow::Program, name: &str, x: f32, y: f32) {
+            if let Some(loc) = gl.get_uniform_location(program, name) {
+                gl.uniform_2_f32(Some(&loc), x, y);
+            }
+        }
+
+        unsafe {
+            // --- Stage 1: downsample + bright_pass into bloom_half[0] ---
+            bloom_half[0].bind();   // also sets viewport to half-res
+            gl.use_program(Some(bloom_programs.downsample));
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(src_texture));
+            // u_resolution = full-res so 1.0 / u_resolution gives source pixel step.
+            set_vec2(gl, bloom_programs.downsample, "u_resolution", full_w as f32, full_h as f32);
+            set_f32(gl, bloom_programs.downsample, "u_param0", threshold);
+            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+
+            // --- Stage 2: horizontal blur, bloom_half[0] -> bloom_half[1] ---
+            bloom_half[1].bind();
+            gl.use_program(Some(bloom_programs.blur_h));
+            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[0].texture));
+            // u_resolution = half-res so 1.0 / u_resolution gives a half-res pixel step.
+            set_vec2(gl, bloom_programs.blur_h, "u_resolution", half_w as f32, half_h as f32);
+            set_f32(gl, bloom_programs.blur_h, "u_param2", radius);
+            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+
+            // --- Stage 3: vertical blur, bloom_half[1] -> bloom_half[0] ---
+            bloom_half[0].bind();
+            gl.use_program(Some(bloom_programs.blur_v));
+            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[1].texture));
+            set_vec2(gl, bloom_programs.blur_v, "u_resolution", half_w as f32, half_h as f32);
+            set_f32(gl, bloom_programs.blur_v, "u_param2", radius);
+            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+
+            // --- Stage 4: composite into the next chain fbo ---
+            dst_fbo.bind();   // restores viewport to full-res (Fbo::bind sets viewport)
+            gl.use_program(Some(bloom_programs.composite));
+            gl.active_texture(glow::TEXTURE5);
+            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[0].texture));
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(src_texture));
+            set_vec2(gl, bloom_programs.composite, "u_resolution", full_w as f32, full_h as f32);
+            set_f32(gl, bloom_programs.composite, "u_param1", intensity);
+            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
+
+            // Unbind TU5 + restore TU0 active so non-bloom_hq passes that follow
+            // continue to write to TU0 via `bind_texture` (the chain's convention).
+            gl.active_texture(glow::TEXTURE5);
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            gl.active_texture(glow::TEXTURE0);
+        }
+    }
+
     /// Walk the enabled passes. The pipeline must have just written the
     /// blend output into `input_framebuffer()`. The last enabled pass
     /// targets the default framebuffer (`default_fb_w` × `default_fb_h`).
@@ -472,6 +557,28 @@ impl PostFx {
         for pass in self.passes.iter().filter(|p| is_renderable(p)) {
             seen += 1;
             let is_last = seen == enabled_count;
+            if pass.name == "bloom_hq" {
+                let slots = pass.params.effective_slot_values(&state.audio_bands, state.audio_bypass);
+                let input_idx = self.input_idx;
+                let next_idx = 1 - input_idx;
+                let dst_fbo = if is_last {
+                    &self.feedback[next_feedback]
+                } else {
+                    &self.pp[next_idx]
+                };
+                Self::dispatch_bloom_hq(
+                    &self.gl,
+                    &self.bloom_half,
+                    &self.bloom_programs,
+                    self.pp[input_idx].texture,
+                    dst_fbo,
+                    self.width,
+                    self.height,
+                    slots,
+                );
+                self.input_idx = next_idx;
+                continue;
+            }
             let input_idx = self.input_idx;
             let next_idx = 1 - input_idx;
             // Pre-filter guarantees lut_textures is non-empty when name == "lut",
