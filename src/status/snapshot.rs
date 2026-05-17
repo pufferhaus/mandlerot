@@ -127,6 +127,10 @@ pub struct PanelSnapshot {
     pub selected_a: u8,
     pub selected_b: u8,
     pub active_look_slot: Option<u8>,
+    /// True when the active Look slot owns a post-FX snapshot with active=true.
+    /// Defaulted to false by `from_state`; the main loop overrides via
+    /// `LookStore::is_bound_active` before sending the snapshot.
+    pub look_postfx_bound: bool,
     pub layer_a: LayerSnapshot,
     pub layer_b: LayerSnapshot,
     /// Current video-capture status surfaced to the top-bar `VID:` chip.
@@ -149,6 +153,7 @@ impl PanelSnapshot {
             selected_a: state.selected_param_a,
             selected_b: state.selected_param_b,
             active_look_slot: state.active_look_slot,
+            look_postfx_bound: false,
             layer_a: LayerSnapshot::from_layer(&state.layer_a),
             layer_b: LayerSnapshot::from_layer(&state.layer_b),
             video_status: crate::video::VideoStatus::NoDevice,

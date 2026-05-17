@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "slots": {
+    "1": {
+      "name": "bound look",
+      "saved_at": "2026-05-16T00:00:00Z",
+      "scene_a": "plasma",
+      "scene_b": "solid",
+      "xfade": 0.4,
+      "blend_mode": "mix",
+      "audio_bypass": false,
+      "params_a": { "scale": 1.0 },
+      "params_b": { "red": 0.5 },
+      "postfx": {
+        "active": true,
+        "passes": [
+          { "name": "bloom_hq", "enabled": true, "params": { "strength": 0.6 } },
+          { "name": "vignette", "enabled": false, "params": { "amount": 0.2 } }
+        ]
+      }
+    },
+    "2": {
+      "name": "paused look",
+      "saved_at": "2026-05-16T00:00:00Z",
+      "scene_a": "plasma",
+      "scene_b": "solid",
+      "xfade": 0.0,
+      "blend_mode": "mix",
+      "audio_bypass": false,
+      "params_a": {},
+      "params_b": {},
+      "postfx": {
+        "active": false,
+        "passes": [
+          { "name": "crt", "enabled": true, "params": { "scan_strength": 0.5 } }
+        ]
+      }
+    }
+  }
+}

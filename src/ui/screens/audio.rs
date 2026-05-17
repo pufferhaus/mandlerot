@@ -252,6 +252,8 @@ mod tests {
             audio,
             postfx: None,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            looks: None,
         }
     }
 

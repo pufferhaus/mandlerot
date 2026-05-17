@@ -80,7 +80,18 @@ impl Screen for PostFxScreen {
                 let _ = slot_i;
             }
         }
-        draw_footer(g, "^v select   Spc toggle   > tune   Esc back");
+        // Bind line
+        let bind_row = 22usize;
+        g.fill(bind_row, 2, 76, '─', ATTR_DIM);
+        let label = match ctx.bound_state {
+            None => "Bind: no active Look".to_string(),
+            Some((slot, false, _)) => format!("[ ] Bind to Look {slot}"),
+            Some((slot, true, false)) => format!("[ ] Bind to Look {slot} (paused)"),
+            Some((slot, true, true)) => format!("[X] Bound to Look {slot}"),
+        };
+        let attr = if ctx.bound_state.is_none() { ATTR_DIM } else { ATTR_BRIGHT };
+        g.write(bind_row + 1, 4, attr, &label);
+        draw_footer(g, "^v select   Spc toggle   > tune   b bind   Esc back");
     }
 
     fn handle_key(&mut self, key: &str, ctx: &mut ScreenCtx) -> ScreenResult {
@@ -113,9 +124,48 @@ impl Screen for PostFxScreen {
                 if let Err(e) = pfx.save_state(ctx.state_dir) {
                     tracing::warn!("save postfx.toml: {e}");
                 }
+                sync_active_look(ctx.looks.as_deref_mut(), ctx.active_look_slot, pfx);
                 ScreenResult::Continue
             }
             "Right" | "Tab" => ScreenResult::Push(Box::new(PostFxParamScreen::new(self.cursor))),
+            "b" | "B" => {
+                let Some(slot) = ctx.active_look_slot else {
+                    tracing::info!("postfx bind: no active Look");
+                    return ScreenResult::Continue;
+                };
+                let Some(looks) = ctx.looks.as_deref_mut() else {
+                    return ScreenResult::Continue;
+                };
+                let has = looks.has_snapshot(slot);
+                let active = looks.is_bound_active(slot);
+                if !has {
+                    // First bind: capture + active=true
+                    let snap = pfx.snapshot();
+                    if let Err(e) = looks.save_postfx_snapshot(slot, snap) {
+                        tracing::warn!("postfx bind: {e}");
+                    }
+                } else if !active {
+                    // Paused -> active + restore
+                    if let Err(e) = looks.set_postfx_active(slot, true) {
+                        tracing::warn!("postfx bind: {e}");
+                    }
+                    if let Some(snap) = looks
+                        .file
+                        .slots
+                        .get(&slot.to_string())
+                        .and_then(|l| l.postfx.as_ref())
+                        .cloned()
+                    {
+                        pfx.apply_snapshot(&snap);
+                    }
+                } else {
+                    // Active -> paused
+                    if let Err(e) = looks.set_postfx_active(slot, false) {
+                        tracing::warn!("postfx bind: {e}");
+                    }
+                }
+                ScreenResult::Continue
+            }
             _ => ScreenResult::Continue,
         }
     }
@@ -226,11 +276,13 @@ impl Screen for PostFxParamScreen {
             "Left" => {
                 nudge(pfx, self.pass_idx, &defs[self.cursor], -1.0);
                 let _ = pfx.save_state(ctx.state_dir);
+                sync_active_look(ctx.looks.as_deref_mut(), ctx.active_look_slot, pfx);
                 ScreenResult::Continue
             }
             "Right" => {
                 nudge(pfx, self.pass_idx, &defs[self.cursor], 1.0);
                 let _ = pfx.save_state(ctx.state_dir);
+                sync_active_look(ctx.looks.as_deref_mut(), ctx.active_look_slot, pfx);
                 ScreenResult::Continue
             }
             "r" | "R" => {
@@ -239,9 +291,24 @@ impl Screen for PostFxParamScreen {
                     pm.set(&d.name, d.default);
                 }
                 let _ = pfx.save_state(ctx.state_dir);
+                sync_active_look(ctx.looks.as_deref_mut(), ctx.active_look_slot, pfx);
                 ScreenResult::Continue
             }
             _ => ScreenResult::Continue,
+        }
+    }
+}
+
+/// Write the live chain to the active+bound Look slot, if any. Called after
+/// every postfx mutation (toggle, nudge, reset).
+fn sync_active_look(
+    looks: Option<&mut crate::preset::LookStore>,
+    slot: Option<u8>,
+    pfx: &crate::render::postfx::PostFx,
+) {
+    if let Some(looks) = looks {
+        if let Err(e) = looks.after_postfx_mutation(slot, pfx.snapshot()) {
+            tracing::warn!("postfx auto-sync: {e}");
         }
     }
 }
@@ -322,6 +389,8 @@ mod tests {
             audio,
             postfx: None,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            looks: None,
         }
     }
 
@@ -351,11 +420,61 @@ mod tests {
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            bound_state: None,
         };
         s.render(&mut g, &rctx);
         // The placeholder for "no postfx" starts at row 4 col 3.
         let row4: String = (3..20).map(|c| g.at(4, c).ch).collect();
         assert!(row4.starts_with("(post-fx"));
+    }
+
+    #[test]
+    fn bind_first_press_captures_snapshot() {
+        // We can't construct a real `&mut PostFx` without GL, so this test
+        // exercises the *contract* of the bind path (the data flow the
+        // handler performs) rather than dispatching through handle_key.
+        use crate::preset::LookStore;
+        use crate::scene::{LoadedScene, SceneLibrary, SceneMeta};
+        use crate::state::{BlendMode, SharedState};
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("p.json");
+
+        let mut lib = SceneLibrary::default();
+        let meta_a = SceneMeta::parse(
+            "name = \"a\"\n[[params]]\nslot = 0\nname = \"x\"\nmin = 0.0\nmax = 1.0\ndefault = 0.5\n",
+            "x",
+        ).unwrap();
+        lib.upsert("a", LoadedScene {
+            meta: meta_a,
+            fragment_body: "void main() {}".into(),
+            source_path: std::path::PathBuf::from("inline"),
+        });
+        let meta_b = SceneMeta::parse(
+            "name = \"b\"\n[[params]]\nslot = 0\nname = \"y\"\nmin = 0.0\nmax = 1.0\ndefault = 0.5\n",
+            "x",
+        ).unwrap();
+        lib.upsert("b", LoadedScene {
+            meta: meta_b,
+            fragment_body: "void main() {}".into(),
+            source_path: std::path::PathBuf::from("inline"),
+        });
+        let state = SharedState::from_initial(&lib, "a", "b", 0.0, BlendMode::Mix).unwrap();
+        let mut store = LookStore::load_or_empty(&path).unwrap();
+        store.save(1, &state, None).unwrap();
+        assert!(!store.has_snapshot(1));
+
+        use crate::render::postfx;
+        let passes = vec![postfx::tests_fake_pass("vignette", true, &[("amount", 0.7)])];
+        let snap = postfx::snapshot_passes(&passes);
+        store.save_postfx_snapshot(1, snap).unwrap();
+        assert!(store.is_bound_active(1));
+        let p = store.file.slots.get("1").unwrap();
+        let saved = p.postfx.as_ref().unwrap();
+        assert_eq!(saved.passes.len(), 1);
+        assert_eq!(saved.passes[0].name, "vignette");
+        assert!(saved.passes[0].enabled);
+        assert_eq!(saved.passes[0].params.get("amount"), Some(&0.7));
     }
 
     #[test]
@@ -373,6 +492,8 @@ mod tests {
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            bound_state: None,
         };
         s.render(&mut g, &rctx);
         let row4: String = (3..30).map(|c| g.at(4, c).ch).collect();

@@ -130,6 +130,7 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
         Action::DebugOverlayToggle => {
             state.status_overlay_visible = !state.status_overlay_visible;
         }
+        Action::PostFxBindToggle => { /* handled by postfx screen / caller in T7 */ }
         Action::OpenMenu(_) => {
             // Stack manipulation lives in main; apply has no state to mutate
             // here. Kept exhaustive so adding a new menu kind forces a thought.

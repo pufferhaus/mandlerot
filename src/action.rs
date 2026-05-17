@@ -66,6 +66,10 @@ pub enum Action {
     /// Toggle the debug overlay. Currently a no-op until Plan 3 lands the
     /// overlay state; included now so F1 doesn't silently fire `Trigger`.
     DebugOverlayToggle,
+    /// Toggle the Post-FX → Look binding on the currently active Look slot.
+    /// Dispatched from the postfx screen on the `b` key. No-op if no Look
+    /// is active. Reserved for future global keymap entry too.
+    PostFxBindToggle,
     /// Open a named menu screen on top of the status panel. Input is routed
     /// to that screen until it (and any pushed children) are dismissed.
     OpenMenu(MenuKind),

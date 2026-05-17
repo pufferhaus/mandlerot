@@ -36,6 +36,7 @@ use mandlerot::input::mock::MockInput;
 use mandlerot::preset::{LookStore, SlotBindings};
 use mandlerot::ui::{RenderCtx, ScreenCtx, ScreenStack};
 use mandlerot::render::pipeline::Pipeline;
+use mandlerot::render::postfx::PostFx;
 use mandlerot::render::target::RenderTarget;
 use mandlerot::scene::{LoadedScene, SceneLibrary, SceneMeta};
 use mandlerot::state::{BlendMode, Mode, SharedState};
@@ -606,6 +607,11 @@ fn main() -> anyhow::Result<()> {
                     Ok(()) => tracing::info!("postfx: hot-reload applied"),
                     Err(e) => tracing::warn!("postfx: hot-reload failed: {e}"),
                 }
+                if let Err(e) = looks
+                    .after_postfx_mutation(state.active_look_slot, pipeline.postfx.snapshot())
+                {
+                    tracing::warn!("postfx auto-sync on hot-reload: {e}");
+                }
             }
         }
 
@@ -689,6 +695,7 @@ fn main() -> anyhow::Result<()> {
                     &library,
                     &mut looks,
                     &mut tap_tempo,
+                    &mut pipeline.postfx,
                 );
                 continue;
             }
@@ -703,6 +710,7 @@ fn main() -> anyhow::Result<()> {
                     &library,
                     &mut looks,
                     &mut tap_tempo,
+                    &mut pipeline.postfx,
                 );
                 continue;
             }
@@ -717,6 +725,8 @@ fn main() -> anyhow::Result<()> {
                     audio: &audio_params,
                     postfx: Some(&mut pipeline.postfx),
                     video_status,
+                    active_look_slot: state.active_look_slot,
+                    looks: Some(&mut looks),
                 };
                 ui_stack.handle_key(&key, &mut ctx);
                 continue;
@@ -735,7 +745,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 let old_a = state.layer_a.scene_name.clone();
                 let old_b = state.layer_b.scene_name.clone();
-                handle_action(&action, &mut state, &library, &mut looks, &mut tap_tempo);
+                handle_action(
+                    &action,
+                    &mut state,
+                    &library,
+                    &mut looks,
+                    &mut tap_tempo,
+                    &mut pipeline.postfx,
+                );
                 if state.layer_a.scene_name != old_a {
                     supervisor.enable(&state.layer_a.scene_name);
                 }
@@ -802,6 +819,9 @@ fn main() -> anyhow::Result<()> {
         // scene names live) and send the rendered grid; the status worker
         // blits it verbatim instead of composing from state.
         let menu_grid = if ui_stack.is_open() {
+            let bound_state = state.active_look_slot.map(|s| {
+                (s, looks.has_snapshot(s), looks.is_bound_active(s))
+            });
             let rctx = RenderCtx {
                 scenes: &scene_names,
                 bindings: &state.slot_bindings,
@@ -810,6 +830,8 @@ fn main() -> anyhow::Result<()> {
                 filtered_scenes: filtered,
                 pi_gen,
                 video_status,
+                active_look_slot: state.active_look_slot,
+                bound_state,
             };
             ui_stack.render_top(&rctx)
         } else {
@@ -817,6 +839,10 @@ fn main() -> anyhow::Result<()> {
         };
         let mut panel = mandlerot::status::snapshot::PanelSnapshot::from_state(&state);
         panel.video_status = video_status;
+        panel.look_postfx_bound = state
+            .active_look_slot
+            .map(|s| looks.is_bound_active(s))
+            .unwrap_or(false);
         status_handle.try_send(mandlerot::status::thread::StateSnapshot {
             panel,
             menu_grid,
@@ -927,6 +953,7 @@ fn handle_action(
     lib: &SceneLibrary,
     looks: &mut LookStore,
     tap: &mut TapTempo,
+    postfx: &mut PostFx,
 ) {
     // (The status panel's "LAST" cell was retired when the AUDIO/LOOKS
     // section went 50/50; we used to populate `state.last_action_label`
@@ -955,7 +982,9 @@ fn handle_action(
                     state.active_look_slot = Some(slot);
                     state.look_dirty = false;
                 }
-            } else if let Err(e) = looks.recall(slot, state, lib) {
+            } else if let Err(e) =
+                looks.recall(slot, state, lib, |snap| postfx.apply_snapshot(snap))
+            {
                 tracing::warn!("preset recall: {e}");
             }
             return;

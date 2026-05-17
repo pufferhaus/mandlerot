@@ -113,6 +113,7 @@ void main() {
 /// Cached uniform locations for one post-FX pass. Resolved at link time
 /// (`resolve_postfx_uniforms`) so the hot `run` loop just does
 /// `uniform_1_f32` against a stored handle — no per-frame string lookups.
+#[derive(Default)]
 struct PostFxUniforms {
     u_time: Option<glow::UniformLocation>,
     u_resolution: Option<glow::UniformLocation>,
@@ -448,6 +449,21 @@ impl PostFx {
 
     pub fn passes_mut(&mut self) -> &mut [PostFxPass] {
         &mut self.passes
+    }
+
+    /// Capture the chain into a serializable snapshot. `active=true`; caller
+    /// may flip it down for "paused" semantics.
+    pub fn snapshot(&self) -> crate::preset::store::PostFxSnapshot {
+        snapshot_passes(&self.passes)
+    }
+
+    /// Apply a snapshot to the live chain. Matches passes by name; passes
+    /// not present in the snapshot are left as-is. Snapshot entries whose
+    /// name is unknown are skipped with a `tracing::warn`. Refreshes the
+    /// status-bar summary.
+    pub fn apply_snapshot(&mut self, snap: &crate::preset::store::PostFxSnapshot) {
+        apply_snapshot_to_passes(&mut self.passes, snap);
+        self.refresh_summary();
     }
 
     /// Built-in 4-stage half-res bloom dispatch. Called from `run()` when
@@ -909,6 +925,85 @@ fn format_param_value(v: f32) -> String {
     }
 }
 
+/// Build a `PostFxPass` directly without a GL context. Used by cross-
+/// module tests that need to drive snapshot helpers without a live chain.
+/// Programs / uniforms / lut_textures are left empty (the snapshot helpers
+/// don't touch them).
+#[cfg(test)]
+pub(crate) fn tests_fake_pass(name: &str, enabled: bool, params: &[(&str, f32)]) -> PostFxPass {
+    let mut toml = format!("name = \"{name}\"\n");
+    for (slot, (n, v)) in params.iter().enumerate() {
+        toml.push_str(&format!(
+            "\n[[params]]\nslot = {slot}\nname = \"{n}\"\nmin = 0.0\nmax = 1.0\ndefault = {v}\n"
+        ));
+    }
+    let meta = SceneMeta::parse(&toml, "inline").unwrap();
+    let params = ParamMap::from_scene(&meta);
+    PostFxPass {
+        name: name.to_string(),
+        meta,
+        fragment_body: String::new(),
+        source_path: PathBuf::from("inline"),
+        program: None,
+        params,
+        enabled,
+        uniforms: PostFxUniforms::default(),
+        lut_textures: vec![],
+    }
+}
+
+/// Pure capture: build a snapshot from a slice of passes. Always
+/// `active=true`; caller (e.g. an auto-sync hook) flips it down for
+/// "paused" semantics.
+pub(crate) fn snapshot_passes(passes: &[PostFxPass]) -> crate::preset::store::PostFxSnapshot {
+    use crate::preset::store::{PostFxPassSnapshot, PostFxSnapshot};
+    let passes = passes
+        .iter()
+        .map(|p| {
+            let mut params = BTreeMap::new();
+            for d in p.params.defs() {
+                if let Some(v) = p.params.get(&d.name) {
+                    params.insert(d.name.clone(), v);
+                }
+            }
+            PostFxPassSnapshot {
+                name: p.name.clone(),
+                enabled: p.enabled,
+                params,
+            }
+        })
+        .collect();
+    PostFxSnapshot {
+        active: true,
+        passes,
+    }
+}
+
+/// Pure apply: match snapshot entries to passes by name. Snapshot entries
+/// with no matching pass log a `tracing::warn` and are skipped; passes not
+/// present in the snapshot are left as-is.
+pub(crate) fn apply_snapshot_to_passes(
+    passes: &mut [PostFxPass],
+    snap: &crate::preset::store::PostFxSnapshot,
+) {
+    let live: std::collections::HashSet<&str> = passes.iter().map(|p| p.name.as_str()).collect();
+    for s in &snap.passes {
+        if !live.contains(s.name.as_str()) {
+            tracing::warn!(pass = %s.name, "postfx snapshot references unknown pass; skipping");
+        }
+    }
+    let by_name: std::collections::BTreeMap<&str, &crate::preset::store::PostFxPassSnapshot> =
+        snap.passes.iter().map(|p| (p.name.as_str(), p)).collect();
+    for pass in passes.iter_mut() {
+        if let Some(s) = by_name.get(pass.name.as_str()) {
+            pass.enabled = s.enabled;
+            for (k, v) in &s.params {
+                pass.params.set(k, *v);
+            }
+        }
+    }
+}
+
 impl Drop for PostFx {
     fn drop(&mut self) {
         // Programs are GL-owned; drop them explicitly so we don't leak when
@@ -1100,5 +1195,89 @@ mod tests {
                 assert_eq!(pixel(240, 0), [0,   0,   255, 255], "identity (240,0)");
             }
         }
+    }
+
+    use crate::preset::store::{PostFxPassSnapshot, PostFxSnapshot};
+    use crate::scene::ParamMap;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    /// Build a `PostFxPass` directly without a GL context. Uses
+    /// `SceneMeta::parse` for the meta so all serde-default fields are
+    /// populated correctly; programs / uniforms / lut_textures are left
+    /// empty (the snapshot helpers don't touch them).
+    fn fake_pass(name: &str, enabled: bool, params: &[(&str, f32)]) -> super::PostFxPass {
+        let mut toml = format!("name = \"{name}\"\n");
+        for (slot, (n, v)) in params.iter().enumerate() {
+            toml.push_str(&format!(
+                "\n[[params]]\nslot = {slot}\nname = \"{n}\"\nmin = 0.0\nmax = 1.0\ndefault = {v}\n"
+            ));
+        }
+        let meta = SceneMeta::parse(&toml, "inline").unwrap();
+        let params = ParamMap::from_scene(&meta);
+        super::PostFxPass {
+            name: name.to_string(),
+            meta,
+            fragment_body: String::new(),
+            source_path: PathBuf::from("inline"),
+            program: None,
+            params,
+            enabled,
+            uniforms: super::PostFxUniforms::default(),
+            lut_textures: vec![],
+        }
+    }
+
+    #[test]
+    fn snapshot_passes_captures_name_enabled_params() {
+        let passes = vec![
+            fake_pass("vignette", true, &[("amount", 0.4)]),
+            fake_pass("grain", false, &[("amount", 0.1)]),
+        ];
+        let snap = super::snapshot_passes(&passes);
+        assert!(snap.active, "snapshot_passes should produce active=true by default");
+        assert_eq!(snap.passes.len(), 2);
+        assert_eq!(snap.passes[0].name, "vignette");
+        assert!(snap.passes[0].enabled);
+        assert_eq!(snap.passes[0].params.get("amount"), Some(&0.4));
+        assert!(!snap.passes[1].enabled);
+    }
+
+    #[test]
+    fn apply_snapshot_updates_matching_passes() {
+        let mut passes = vec![
+            fake_pass("vignette", false, &[("amount", 0.0)]),
+            fake_pass("grain", true, &[("amount", 0.0)]),
+        ];
+        let snap = PostFxSnapshot {
+            active: true,
+            passes: vec![PostFxPassSnapshot {
+                name: "vignette".into(),
+                enabled: true,
+                params: BTreeMap::from([("amount".to_string(), 0.5)]),
+            }],
+        };
+        super::apply_snapshot_to_passes(&mut passes, &snap);
+        assert!(passes[0].enabled);
+        assert_eq!(passes[0].params.get("amount"), Some(0.5));
+        // grain not in snapshot → left alone
+        assert!(passes[1].enabled);
+        assert_eq!(passes[1].params.get("amount"), Some(0.0));
+    }
+
+    #[test]
+    fn apply_snapshot_skips_unknown_names() {
+        let mut passes = vec![fake_pass("vignette", false, &[("amount", 0.0)])];
+        let snap = PostFxSnapshot {
+            active: true,
+            passes: vec![PostFxPassSnapshot {
+                name: "deleted_pass".into(),
+                enabled: true,
+                params: BTreeMap::new(),
+            }],
+        };
+        // Must not panic; existing pass stays as-is.
+        super::apply_snapshot_to_passes(&mut passes, &snap);
+        assert!(!passes[0].enabled);
     }
 }

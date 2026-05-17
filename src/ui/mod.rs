@@ -33,6 +33,11 @@ pub struct ScreenCtx<'a> {
     /// "no device" / "OK" / "stale" / "error" can do so without reaching
     /// back into the pipeline.
     pub video_status: crate::video::VideoStatus,
+    /// Slot currently mounted as the active Look, if any. Read from
+    /// SharedState::active_look_slot at frame build time.
+    pub active_look_slot: Option<u8>,
+    /// Live LookStore. None in tests that don't exercise the bind path.
+    pub looks: Option<&'a mut crate::preset::LookStore>,
 }
 
 /// Read-only context for paint time. Decoupled from `ScreenCtx` so the
@@ -52,6 +57,11 @@ pub struct RenderCtx<'a> {
     /// Live video-capture status, surfaced for screens that want to render
     /// the current device state (Task 13's audio/video device picker).
     pub video_status: crate::video::VideoStatus,
+    pub active_look_slot: Option<u8>,
+    /// `(slot, has_snapshot, is_active)` for the active Look, if any.
+    /// Read off LookStore at frame build time so the screen can render the
+    /// bind line without holding a LookStore borrow.
+    pub bound_state: Option<(u8, bool, bool)>,
 }
 
 /// Result of a single key delivered to a screen.
@@ -194,6 +204,8 @@ mod tests {
             audio,
             postfx: None,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            looks: None,
         }
     }
 
@@ -210,6 +222,8 @@ mod tests {
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            bound_state: None,
         }
     }
 

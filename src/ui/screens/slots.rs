@@ -159,6 +159,8 @@ mod tests {
             audio,
             postfx: None,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            looks: None,
         }
     }
     fn r_ctx<'a>(
@@ -174,6 +176,8 @@ mod tests {
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,
+            active_look_slot: None,
+            bound_state: None,
         }
     }
 

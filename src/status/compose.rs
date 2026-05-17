@@ -332,6 +332,9 @@ fn write_audio_looks_last(g: &mut TextScreen, snap: &PanelSnapshot) {
             Cell::new(std::char::from_digit(slot as u32, 10).unwrap(), attr),
         );
         g.set(16, col + 2, Cell::new(']', attr));
+        if active && snap.look_postfx_bound {
+            g.set(16, col + 3, Cell::new('*', ATTR_BRIGHT));
+        }
         col += 4;
     }
 }
@@ -696,5 +699,28 @@ mod tests {
         let g = state_to_grid(&snap, "", &sm, None);
         let line: String = (59..79).map(|c| g.at(25, c).ch).collect();
         assert_eq!(line.chars().count(), 20);
+    }
+
+    #[test]
+    fn bound_look_renders_star_suffix() {
+        let mut snap = PanelSnapshot::from_state(&state());
+        snap.active_look_slot = Some(3);
+        snap.look_postfx_bound = true;
+        let g = state_to_grid(&snap, "", &SysMon::new(), None);
+        // Slot 3 lives at base col 44 + (3-1)*4 = 52; cells [3] at 52..=54,
+        // suffix '*' at col 55.
+        assert_eq!(g.at(16, 53).ch, '3');
+        assert_eq!(g.at(16, 55).ch, '*');
+        assert!(g.at(16, 55).attr & ATTR_BRIGHT != 0);
+    }
+
+    #[test]
+    fn unbound_look_renders_no_star() {
+        let mut snap = PanelSnapshot::from_state(&state());
+        snap.active_look_slot = Some(3);
+        snap.look_postfx_bound = false;
+        let g = state_to_grid(&snap, "", &SysMon::new(), None);
+        // Gap cell at col 55 stays blank when not bound.
+        assert_ne!(g.at(16, 55).ch, '*');
     }
 }
