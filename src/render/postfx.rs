@@ -34,6 +34,71 @@ use super::shader::{assemble_postfx_fragment, QUAD_VERT};
 /// internal to the chain pipeline; no use putting it in `shaders/`.
 const BLIT_FRAG: &str = "#version 100\nprecision mediump float;\nuniform sampler2D u_input;\nvarying vec2 v_uv;\nvoid main(){ gl_FragColor = texture2D(u_input, v_uv); }\n";
 
+const BLOOM_DOWNSAMPLE_FRAG: &str = r#"
+vec3 bright_pass(vec3 c, float t) {
+    float lum = dot(c, vec3(0.299, 0.587, 0.114));
+    return c * max(lum - t, 0.0);
+}
+void main() {
+    vec2 px = 1.0 / u_resolution;
+    vec3 c = (
+        texture2D(u_input, v_uv + vec2(-0.5, -0.5) * px).rgb +
+        texture2D(u_input, v_uv + vec2( 0.5, -0.5) * px).rgb +
+        texture2D(u_input, v_uv + vec2(-0.5,  0.5) * px).rgb +
+        texture2D(u_input, v_uv + vec2( 0.5,  0.5) * px).rgb
+    ) * 0.25;
+    gl_FragColor = vec4(bright_pass(c, u_param0), 1.0);
+}
+"#;
+
+// Separable Gaussian, 5 linear-sampled taps (sigma ~= 1.5). The horizontal
+// and vertical bodies are identical except for the offset axis.
+const BLOOM_BLUR_H_FRAG: &str = r#"
+const float W0 = 0.227027;
+const float W1 = 0.316216;
+const float W2 = 0.070270;
+void main() {
+    vec2 px = 1.0 / u_resolution;
+    vec2 ofs1 = vec2(1.3846, 0.0) * px * u_param2;
+    vec2 ofs2 = vec2(3.2308, 0.0) * px * u_param2;
+    vec3 c = texture2D(u_input, v_uv).rgb * W0;
+    c += texture2D(u_input, v_uv + ofs1).rgb * W1;
+    c += texture2D(u_input, v_uv - ofs1).rgb * W1;
+    c += texture2D(u_input, v_uv + ofs2).rgb * W2;
+    c += texture2D(u_input, v_uv - ofs2).rgb * W2;
+    gl_FragColor = vec4(c, 1.0);
+}
+"#;
+
+const BLOOM_BLUR_V_FRAG: &str = r#"
+const float W0 = 0.227027;
+const float W1 = 0.316216;
+const float W2 = 0.070270;
+void main() {
+    vec2 px = 1.0 / u_resolution;
+    vec2 ofs1 = vec2(0.0, 1.3846) * px * u_param2;
+    vec2 ofs2 = vec2(0.0, 3.2308) * px * u_param2;
+    vec3 c = texture2D(u_input, v_uv).rgb * W0;
+    c += texture2D(u_input, v_uv + ofs1).rgb * W1;
+    c += texture2D(u_input, v_uv - ofs1).rgb * W1;
+    c += texture2D(u_input, v_uv + ofs2).rgb * W2;
+    c += texture2D(u_input, v_uv - ofs2).rgb * W2;
+    gl_FragColor = vec4(c, 1.0);
+}
+"#;
+
+// Composite stage: u_input is the original (pre-bloom) chain pixels;
+// u_bloom is the blurred half-res result, bilinearly upsampled by the
+// hardware (FBO defaults to LINEAR filtering per src/render/fbo.rs).
+const BLOOM_COMPOSITE_FRAG: &str = r#"
+uniform sampler2D u_bloom;
+void main() {
+    vec3 src   = texture2D(u_input, v_uv).rgb;
+    vec3 bloom = texture2D(u_bloom, v_uv).rgb;
+    gl_FragColor = vec4(src + bloom * u_param1, 1.0);
+}
+"#;
+
 /// Cached uniform locations for one post-FX pass. Resolved at link time
 /// (`resolve_postfx_uniforms`) so the hot `run` loop just does
 /// `uniform_1_f32` against a stored handle — no per-frame string lookups.
@@ -43,6 +108,13 @@ struct PostFxUniforms {
     u_audio_mid: Option<glow::UniformLocation>,
     u_params: [Option<glow::UniformLocation>; 8],
     u_lut: Option<glow::UniformLocation>,
+}
+
+struct BloomHqPrograms {
+    downsample: glow::Program,
+    blur_h:     glow::Program,
+    blur_v:     glow::Program,
+    composite:  glow::Program,
 }
 
 fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFxUniforms {
@@ -118,6 +190,10 @@ pub struct PostFx {
     /// loop to populate the StateSnapshot. Eliminates a per-frame `Vec<String>`
     /// allocation.
     summary_cache: String,
+    // Built-in pass GPU resources, allocated once at PostFx::new and
+    // shared across all bloom_hq invocations.
+    bloom_half: [Fbo; 2],
+    bloom_programs: BloomHqPrograms,
 }
 
 impl PostFx {
@@ -139,6 +215,50 @@ impl PostFx {
                 gl.uniform_1_i32(loc.as_ref(), 0);
             }
         }
+        // Half-res scratch for bloom_hq. Sized at chain/2 rounded up
+        // (max(1) guards a degenerate 1x1 chain).
+        let half_w = (width / 2).max(1);
+        let half_h = (height / 2).max(1);
+        let bloom_half = [
+            Fbo::new(gl.clone(), half_w, half_h)?,
+            Fbo::new(gl.clone(), half_w, half_h)?,
+        ];
+
+        // Compile the 4 built-in bloom_hq programs. Each uses the standard
+        // postfx prelude so u_input/u_resolution/u_param* are available.
+        let downsample = compile_program(
+            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_DOWNSAMPLE_FRAG),
+        )?;
+        let blur_h = compile_program(
+            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_BLUR_H_FRAG),
+        )?;
+        let blur_v = compile_program(
+            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_BLUR_V_FRAG),
+        )?;
+        let composite = compile_program(
+            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_COMPOSITE_FRAG),
+        )?;
+        // Pin samplers to their TUs once at link time.
+        unsafe {
+            for p in [downsample, blur_h, blur_v, composite] {
+                gl.use_program(Some(p));
+                if let Some(loc) = gl.get_uniform_location(p, "u_input") {
+                    gl.uniform_1_i32(Some(&loc), 0);
+                }
+            }
+            // Composite also reads u_bloom on TU5.
+            gl.use_program(Some(composite));
+            if let Some(loc) = gl.get_uniform_location(composite, "u_bloom") {
+                gl.uniform_1_i32(Some(&loc), 5);
+            }
+        }
+        let bloom_programs = BloomHqPrograms {
+            downsample,
+            blur_h,
+            blur_v,
+            composite,
+        };
+
         Ok(Self {
             gl,
             width,
@@ -150,6 +270,8 @@ impl PostFx {
             blit_program,
             passes: Vec::new(),
             summary_cache: String::new(),
+            bloom_half,
+            bloom_programs,
         })
     }
 
@@ -603,6 +725,12 @@ impl Drop for PostFx {
                     self.gl.delete_texture(*tex);
                 }
             }
+        }
+        unsafe {
+            self.gl.delete_program(self.bloom_programs.downsample);
+            self.gl.delete_program(self.bloom_programs.blur_h);
+            self.gl.delete_program(self.bloom_programs.blur_v);
+            self.gl.delete_program(self.bloom_programs.composite);
         }
     }
 }
