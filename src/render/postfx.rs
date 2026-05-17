@@ -972,6 +972,7 @@ mod tests {
             ("bloom",      true),
             ("bloom_hq",   false),   // built-in: meta only
             ("chromatic",  true),
+            ("crt",        true),
             ("dither",     true),
             ("grain",      true),
             ("lut",        true),
@@ -1035,7 +1036,7 @@ mod tests {
 
         assert_eq!(names_first, names_second, "postfx/ contents must be stable between scans");
         assert!(names_first.contains(&"lut".to_string()), "lut pass must be present");
-        assert_eq!(names_first.len(), 8, "8 user-shader postfx passes (bloom_hq is built-in, TOML-only)");
+        assert_eq!(names_first.len(), 9, "9 user-shader postfx passes (bloom_hq is built-in, TOML-only)");
         let bloom_hq_toml = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("postfx")
             .join("bloom_hq.toml");

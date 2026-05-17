@@ -1,0 +1,43 @@
+name = "crt"
+display_name = "CRT"
+enabled_by_default = false
+
+[[params]]
+slot = 0
+name = "scanline"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+
+[[params]]
+slot = 1
+name = "curvature"
+min = 0.0
+max = 0.3
+default = 0.08
+curve = "linear"
+
+[[params]]
+slot = 2
+name = "aperture"
+min = 0.0
+max = 1.0
+default = 0.25
+curve = "linear"
+
+[[params]]
+slot = 3
+name = "corner_darken"
+min = 0.0
+max = 1.0
+default = 0.4
+curve = "linear"
+
+[[params]]
+slot = 4
+name = "phosphor_decay"
+min = 0.0
+max = 1.0
+default = 0.0
+curve = "linear"
