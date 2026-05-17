@@ -15,6 +15,51 @@
 use crate::scene::AudioRoute;
 use crate::state::{BlendMode, Layer, LayerState, Mode, SharedState};
 
+/// Which chromakey preset (or custom colour) is active. Used by the top-bar
+/// `KEY:` chip on the status panel.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ChromakeyChip {
+    #[default]
+    Off,
+    Green,
+    Magenta,
+    Blue,
+    Yellow,
+    Custom,
+}
+
+impl ChromakeyChip {
+    pub fn from_state(s: &crate::render::chromakey::ChromakeyState) -> Self {
+        if !s.enabled {
+            return Self::Off;
+        }
+        let c = s.key_color;
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-3;
+        if near(c[0], 0.0) && near(c[1], 1.0) && near(c[2], 0.0) {
+            Self::Green
+        } else if near(c[0], 1.0) && near(c[1], 0.0) && near(c[2], 1.0) {
+            Self::Magenta
+        } else if near(c[0], 0.0) && near(c[1], 0.0) && near(c[2], 1.0) {
+            Self::Blue
+        } else if near(c[0], 1.0) && near(c[1], 1.0) && near(c[2], 0.0) {
+            Self::Yellow
+        } else {
+            Self::Custom
+        }
+    }
+
+    pub fn as_chip(&self) -> &'static str {
+        match self {
+            Self::Off => "KEY:--",
+            Self::Green => "KEY:G ",
+            Self::Magenta => "KEY:M ",
+            Self::Blue => "KEY:B ",
+            Self::Yellow => "KEY:Y ",
+            Self::Custom => "KEY:??",
+        }
+    }
+}
+
 /// Maximum inline width for a param name. Compose already truncates to 8
 /// chars for the column it renders into, so we store the truncated bytes
 /// directly with no heap.
@@ -131,6 +176,9 @@ pub struct PanelSnapshot {
     /// Defaulted to false by `from_state`; the main loop overrides via
     /// `LookStore::is_bound_active` before sending the snapshot.
     pub look_postfx_bound: bool,
+    /// Snapshot of `SharedState::chromakey` flattened to what the top-bar
+    /// chip needs to render.
+    pub chromakey_chip: ChromakeyChip,
     pub layer_a: LayerSnapshot,
     pub layer_b: LayerSnapshot,
     /// Current video-capture status surfaced to the top-bar `VID:` chip.
@@ -154,6 +202,7 @@ impl PanelSnapshot {
             selected_b: state.selected_param_b,
             active_look_slot: state.active_look_slot,
             look_postfx_bound: false,
+            chromakey_chip: ChromakeyChip::Off,
             layer_a: LayerSnapshot::from_layer(&state.layer_a),
             layer_b: LayerSnapshot::from_layer(&state.layer_b),
             video_status: crate::video::VideoStatus::NoDevice,

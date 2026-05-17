@@ -91,6 +91,9 @@ pub fn apply(action: &Action, state: &mut SharedState, lib: &SceneLibrary) -> Re
             state.audio_bypass = !state.audio_bypass;
             state.look_dirty = true;
         }
+        Action::ChromakeyToggle => {
+            state.chromakey.enabled = !state.chromakey.enabled;
+        }
         Action::Panic => {
             state.layer_a.scene_name = SAFE_SCENE_NAME.to_string();
             state.layer_b.scene_name = SAFE_SCENE_NAME.to_string();
@@ -506,5 +509,16 @@ mod tests {
         assert!(s.freeze_active);
         apply(&Action::FreezeToggle, &mut s, &lib).unwrap();
         assert!(!s.freeze_active);
+    }
+
+    #[test]
+    fn chromakey_toggle_flips_enabled() {
+        let lib = three_scenes();
+        let mut s = base_state(&lib);
+        assert!(!s.chromakey.enabled);
+        apply(&Action::ChromakeyToggle, &mut s, &lib).unwrap();
+        assert!(s.chromakey.enabled);
+        apply(&Action::ChromakeyToggle, &mut s, &lib).unwrap();
+        assert!(!s.chromakey.enabled);
     }
 }

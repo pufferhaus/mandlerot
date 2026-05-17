@@ -161,6 +161,7 @@ fn main() -> anyhow::Result<()> {
     let state_dir = mandlerot::config::user_state_dir();
     state.slot_bindings = SlotBindings::load_or_empty(&state_dir);
     let audio_params = AudioParams::load_or_default(&state_dir);
+    state.chromakey = mandlerot::render::chromakey::ChromakeyState::load_or_default(&state_dir);
     let mut ui_stack = ScreenStack::new();
     // Double-tap Esc is the unconditional keyboard escape hatch: even with
     // a menu open (which normally swallows Esc), two quick taps close the
@@ -724,6 +725,7 @@ fn main() -> anyhow::Result<()> {
                     state_dir: &state_dir,
                     audio: &audio_params,
                     postfx: Some(&mut pipeline.postfx),
+                    chromakey: Some(&mut state.chromakey),
                     video_status,
                     active_look_slot: state.active_look_slot,
                     looks: Some(&mut looks),
@@ -753,6 +755,11 @@ fn main() -> anyhow::Result<()> {
                     &mut tap_tempo,
                     &mut pipeline.postfx,
                 );
+                if matches!(action, mandlerot::action::Action::ChromakeyToggle) {
+                    if let Err(e) = state.chromakey.save(&state_dir) {
+                        tracing::warn!("save chromakey.toml: {e}");
+                    }
+                }
                 if state.layer_a.scene_name != old_a {
                     supervisor.enable(&state.layer_a.scene_name);
                 }
@@ -827,6 +834,7 @@ fn main() -> anyhow::Result<()> {
                 bindings: &state.slot_bindings,
                 audio: &audio_params,
                 postfx: Some(&pipeline.postfx),
+                chromakey: Some(&state.chromakey),
                 filtered_scenes: filtered,
                 pi_gen,
                 video_status,
@@ -839,6 +847,7 @@ fn main() -> anyhow::Result<()> {
         };
         let mut panel = mandlerot::status::snapshot::PanelSnapshot::from_state(&state);
         panel.video_status = video_status;
+        panel.chromakey_chip = mandlerot::status::snapshot::ChromakeyChip::from_state(&state.chromakey);
         panel.look_postfx_bound = state
             .active_look_slot
             .map(|s| looks.is_bound_active(s))

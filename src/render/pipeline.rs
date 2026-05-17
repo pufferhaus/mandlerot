@@ -39,6 +39,11 @@ pub struct BlendProgram {
     pub program: glow::Program,
     u_xfade: Option<glow::UniformLocation>,
     u_blend_mode: Option<glow::UniformLocation>,
+    u_key_enabled: Option<glow::UniformLocation>,
+    u_key_color: Option<glow::UniformLocation>,
+    u_key_luma: Option<glow::UniformLocation>,
+    u_key_soft: Option<glow::UniformLocation>,
+    u_key_spill: Option<glow::UniformLocation>,
 }
 
 pub struct Pipeline {
@@ -507,13 +512,29 @@ impl Pipeline {
         self.gl
             .bind_texture(glow::TEXTURE_2D, Some(self.fbo_b[self.front_b].texture));
         // Sampler bindings (u_layer_a→0, u_layer_b→1) were set at link
-        // time in `Pipeline::new` via `resolve_blend_uniforms`, so we only
-        // need to upload xfade + blend mode here.
+        // time in `Pipeline::new` via `resolve_blend_uniforms`, so the
+        // per-frame bind list is xfade, blend mode, and the chromakey uniforms.
         if let Some(loc) = &self.blend.u_xfade {
             self.gl.uniform_1_f32(Some(loc), state.xfade);
         }
         if let Some(loc) = &self.blend.u_blend_mode {
             self.gl.uniform_1_i32(Some(loc), state.blend_mode.as_int());
+        }
+        let ck = &state.chromakey;
+        if let Some(loc) = &self.blend.u_key_enabled {
+            self.gl.uniform_1_i32(Some(loc), if ck.enabled { 1 } else { 0 });
+        }
+        if let Some(loc) = &self.blend.u_key_color {
+            self.gl.uniform_3_f32(Some(loc), ck.key_color[0], ck.key_color[1], ck.key_color[2]);
+        }
+        if let Some(loc) = &self.blend.u_key_luma {
+            self.gl.uniform_1_f32(Some(loc), ck.luma_threshold);
+        }
+        if let Some(loc) = &self.blend.u_key_soft {
+            self.gl.uniform_1_f32(Some(loc), ck.edge_soft);
+        }
+        if let Some(loc) = &self.blend.u_key_spill {
+            self.gl.uniform_1_i32(Some(loc), if ck.spill_suppress { 1 } else { 0 });
         }
         // Restore TEXTURE0 as the active unit so the next scene draw
         // doesn't accidentally bind its prev FBO into TEXTURE1.
@@ -739,6 +760,11 @@ fn resolve_blend_uniforms(gl: &glow::Context, program: glow::Program) -> BlendPr
         program,
         u_xfade: loc("u_xfade"),
         u_blend_mode: loc("u_blend_mode"),
+        u_key_enabled: loc("u_key_enabled"),
+        u_key_color: loc("u_key_color"),
+        u_key_luma: loc("u_key_luma"),
+        u_key_soft: loc("u_key_soft"),
+        u_key_spill: loc("u_key_spill"),
     }
 }
 

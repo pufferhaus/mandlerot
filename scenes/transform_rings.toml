@@ -1,4 +1,5 @@
 name = "transform_rings"
+keyable = true
 display_name = "Transform Rings"
 internal_resolution = "220x150"
 

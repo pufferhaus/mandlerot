@@ -1,4 +1,5 @@
 name = "sparkle"
+keyable = true
 display_name = "Sparkle"
 
 [[params]]

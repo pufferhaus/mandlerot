@@ -1,4 +1,5 @@
 name = "speed_lines"
+keyable = true
 display_name = "Speed Lines"
 internal_resolution = "720x480"
 

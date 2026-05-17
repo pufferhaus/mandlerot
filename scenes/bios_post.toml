@@ -1,4 +1,5 @@
 name = "bios_post"
+keyable = true
 display_name = "BIOS POST"
 internal_resolution = "600x400"
 

@@ -1,4 +1,5 @@
 name = "vectorscope"
+keyable = true
 display_name = "Vectorscope"
 
 [[params]]

@@ -209,6 +209,9 @@ action = "TapTempo"
 [[binding]]
 key = "G"
 action = "AudioBypass"
+[[binding]]
+key = "K"
+action = "ChromakeyToggle"
 # NumpadDecimal (the "." key on the cheap pad) is now AdvanceMode — the
 # most-pressed bottom-row primary. AudioBypass moves to a 000-held combo
 # below since it's not in the hot-path of a set.

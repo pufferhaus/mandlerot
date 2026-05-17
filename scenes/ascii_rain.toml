@@ -1,4 +1,5 @@
 name = "ascii_rain"
+keyable = true
 display_name = "Matrix Rain"
 internal_resolution = "600x400"
 

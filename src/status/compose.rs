@@ -126,6 +126,9 @@ fn write_top_bar(g: &mut TextScreen, snap: &PanelSnapshot, postfx_summary: &str)
     // 6-char video-capture status chip: `VID:--` / `VID:OK` / `VID:ST` /
     // `VID:ER`. Ends at col 52, leaving cols 53..59 blank before BPM.
     g.write(0, 47, ATTR_BRIGHT, snap.video_status.as_chip());
+    // 6-char chromakey chip at cols 53..58: `KEY:--` / `KEY:G ` / etc.
+    // Fills the gap between VID: and BPM: with no column shifts.
+    g.write(0, 53, ATTR_BRIGHT, snap.chromakey_chip.as_chip());
     let bpm = format!("BPM:{:>3.0}", snap.bpm);
     g.write(0, 60, ATTR_BRIGHT, &bpm);
     let aud_lbl = format!("AUD:{}", aud);
@@ -722,5 +725,21 @@ mod tests {
         let g = state_to_grid(&snap, "", &SysMon::new(), None);
         // Gap cell at col 55 stays blank when not bound.
         assert_ne!(g.at(16, 55).ch, '*');
+    }
+
+    #[test]
+    fn key_chip_reads_off_when_disabled() {
+        let g = state_to_grid(&PanelSnapshot::from_state(&state()), "", &SysMon::new(), None);
+        let chip: String = (53..59).map(|c| g.at(0, c).ch).collect();
+        assert_eq!(chip, "KEY:--");
+    }
+
+    #[test]
+    fn key_chip_reads_green_when_enabled_and_green() {
+        let mut snap = PanelSnapshot::from_state(&state());
+        snap.chromakey_chip = crate::status::snapshot::ChromakeyChip::Green;
+        let g = state_to_grid(&snap, "", &SysMon::new(), None);
+        let chip: String = (53..59).map(|c| g.at(0, c).ch).collect();
+        assert_eq!(chip, "KEY:G ");
     }
 }

@@ -1,4 +1,5 @@
 name = "hex_rain"
+keyable = true
 display_name = "Hex Rain"
 internal_resolution = "600x400"
 

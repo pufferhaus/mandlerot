@@ -1,3 +1,4 @@
+pub mod chromakey;
 pub mod fbo;
 pub mod lut;
 pub mod pipeline;

@@ -1,4 +1,5 @@
 name = "donut"
+keyable = true
 display_name = "ASCII Donut"
 internal_resolution = "480x320"
 

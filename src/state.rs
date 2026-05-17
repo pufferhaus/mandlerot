@@ -109,6 +109,10 @@ pub struct SharedState {
     pub status_overlay_visible: bool,
     /// User-bound slot → scene mappings. Editable via the in-app menu.
     pub slot_bindings: SlotBindings,
+    /// Chromakey output state. When `.enabled`, the blend pass replaces
+    /// background pixels (luma <= threshold) with `key_color`. Persisted to
+    /// `<state_dir>/chromakey.toml`.
+    pub chromakey: crate::render::chromakey::ChromakeyState,
 }
 
 impl SharedState {
@@ -147,6 +151,7 @@ impl SharedState {
             last_action_label: String::new(),
             status_overlay_visible: false,
             slot_bindings: SlotBindings::default(),
+            chromakey: crate::render::chromakey::ChromakeyState::default(),
         })
     }
 

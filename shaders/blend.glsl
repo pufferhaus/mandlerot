@@ -4,6 +4,11 @@ uniform sampler2D u_layer_a;
 uniform sampler2D u_layer_b;
 uniform float u_xfade;
 uniform int u_blend_mode;
+uniform int u_key_enabled;     // 0 = off, 1 = on
+uniform vec3 u_key_color;      // linear RGB
+uniform float u_key_luma;      // threshold (Rec. 601)
+uniform float u_key_soft;      // soft-edge half-width
+uniform int u_key_spill;       // 0 = off, 1 = subtract chroma component
 varying vec2 v_uv;
 
 // All modes follow the same shape: `mix(a, OP(a,b), u_xfade)`. xfade=0 → A,
@@ -113,5 +118,24 @@ void main() {
         op = vec4(hsl2rgb(vec3(hb.x, hb.y, ha.z)), a.a);
     }
     else                         op = b;                              // safe fallback
-    gl_FragColor = mix(a, op, u_xfade);
+    vec4 mixed = mix(a, op, u_xfade);
+    if (u_key_enabled == 1) {
+        float l = dot(mixed.rgb, vec3(0.299, 0.587, 0.114));
+        float t0 = u_key_luma - u_key_soft;
+        float t1 = u_key_luma + max(u_key_soft, 1e-4);
+        // factor = 1.0 when fully background, 0.0 when fully foreground.
+        float factor = 1.0 - smoothstep(t0, t1, l);
+        vec3 fg = mixed.rgb;
+        if (u_key_spill == 1) {
+            // Subtract the key-color projection on a per-channel basis so
+            // edges don't carry the key tint downstream. Clamped to 0 to
+            // avoid going negative on saturated foreground hits.
+            float proj = dot(fg, u_key_color);
+            fg = clamp(fg - u_key_color * proj * 0.5, 0.0, 1.0);
+        }
+        vec3 col = mix(fg, u_key_color, factor);
+        gl_FragColor = vec4(col, mixed.a);
+    } else {
+        gl_FragColor = mixed;
+    }
 }

@@ -1,4 +1,5 @@
 name = "pong"
+keyable = true
 display_name = "Pong"
 internal_resolution = "480x320"
 

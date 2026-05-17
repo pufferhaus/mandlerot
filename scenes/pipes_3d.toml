@@ -1,4 +1,5 @@
 name = "pipes_3d"
+keyable = true
 display_name = "3D Pipes"
 internal_resolution = "720x480"
 

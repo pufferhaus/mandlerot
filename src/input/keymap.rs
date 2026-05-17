@@ -153,6 +153,7 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
         "FreezeToggle" => Action::FreezeToggle,
         "TapTempo" => Action::TapTempo,
         "AudioBypass" => Action::AudioBypass,
+        "ChromakeyToggle" => Action::ChromakeyToggle,
         "Panic" => Action::Panic,
         "ReloadAllScenes" => Action::ReloadAllScenes,
         "ResetAllParams" => Action::ResetAllParams,
@@ -212,6 +213,7 @@ mod tests {
             last_action_label: String::new(),
             status_overlay_visible: false,
             slot_bindings: crate::preset::SlotBindings::default(),
+            chromakey: crate::render::chromakey::ChromakeyState::default(),
         }
     }
 

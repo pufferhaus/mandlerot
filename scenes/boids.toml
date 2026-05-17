@@ -1,4 +1,5 @@
 name = "boids"
+keyable = true
 display_name = "Boids"
 internal_resolution = "180x120"
 

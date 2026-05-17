@@ -29,6 +29,8 @@ pub struct ScreenCtx<'a> {
     /// that don't exercise post-FX screens pass `None` to avoid having to
     /// build a GL context just to construct a `PostFx`.
     pub postfx: Option<&'a mut PostFx>,
+    /// Live ChromakeyState. None in screens / tests that don't need to mutate it.
+    pub chromakey: Option<&'a mut crate::render::chromakey::ChromakeyState>,
     /// Live video-capture status, surfaced so screens that want to label
     /// "no device" / "OK" / "stale" / "error" can do so without reaching
     /// back into the pipeline.
@@ -48,6 +50,8 @@ pub struct RenderCtx<'a> {
     pub bindings: &'a SlotBindings,
     pub audio: &'a Arc<AudioParams>,
     pub postfx: Option<&'a PostFx>,
+    /// Immutable view of chromakey state for the screen to render.
+    pub chromakey: Option<&'a crate::render::chromakey::ChromakeyState>,
     /// Number of scenes dropped at load time because their `min_pi_gen`
     /// exceeded the detected gen (roadmap 28a). 0 = no filtering applied.
     pub filtered_scenes: usize,
@@ -203,6 +207,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            chromakey: None,
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             looks: None,
@@ -219,6 +224,7 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            chromakey: None,
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,

@@ -5,7 +5,7 @@
 //! `enter()`. The screen layout adapts to the entry count automatically.
 
 use crate::status::{Cell, TextScreen, ATTR_BRIGHT, ATTR_DIM, ATTR_INVERSE, ATTR_NORMAL};
-use crate::ui::screens::{AudioSettingsScreen, PostFxScreen, SlotsScreen};
+use crate::ui::screens::{AudioSettingsScreen, ChromakeyScreen, PostFxScreen, SlotsScreen};
 use crate::ui::{RenderCtx, Screen, ScreenCtx, ScreenResult};
 
 #[derive(Clone, Copy)]
@@ -30,6 +30,10 @@ const ENTRIES: &[Entry] = &[
     Entry {
         label: "Post-FX",
         hint: "Toggle + tune output passes",
+    },
+    Entry {
+        label: "Chromakey",
+        hint: "Output mode for external mixer",
     },
 ];
 
@@ -65,7 +69,7 @@ impl Screen for SettingsScreen {
             g.write(row, 7, attr, e.label);
             g.write(row + 1, 7, ATTR_DIM, e.hint);
         }
-        draw_footer(g, "1-4 / Enter open   -/+ cursor   Bksp back");
+        draw_footer(g, "1-5 / Enter open   -/+ cursor   Bksp back");
     }
 
     fn handle_key(&mut self, key: &str, _ctx: &mut ScreenCtx) -> ScreenResult {
@@ -104,6 +108,7 @@ fn enter(idx: u8) -> ScreenResult {
         1 => ScreenResult::Push(Box::new(AudioSettingsScreen::new())),
         2 => ScreenResult::Push(Box::new(SlotsScreen::new())),
         3 => ScreenResult::Push(Box::new(PostFxScreen::new())),
+        4 => ScreenResult::Push(Box::new(ChromakeyScreen::new())),
         _ => ScreenResult::Continue,
     }
 }
@@ -166,6 +171,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            chromakey: None,
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             looks: None,
@@ -181,6 +187,7 @@ mod tests {
             bindings,
             audio,
             postfx: None,
+            chromakey: None,
             filtered_scenes: 0,
             pi_gen: crate::platform::PiGen::Unknown,
             video_status: crate::video::VideoStatus::NoDevice,

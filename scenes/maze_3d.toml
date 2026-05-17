@@ -1,4 +1,5 @@
 name = "maze_3d"
+keyable = true
 display_name = "3D Maze"
 internal_resolution = "280x190"
 

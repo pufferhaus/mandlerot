@@ -251,6 +251,7 @@ mod tests {
             state_dir: dir,
             audio,
             postfx: None,
+            chromakey: None,
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             looks: None,

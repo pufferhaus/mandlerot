@@ -34,6 +34,8 @@ pub enum Action {
     TapTempo,
     /// Toggle audio reactivity bypass.
     AudioBypass,
+    /// Toggle the chromakey output mode. Persists `chromakey.toml`.
+    ChromakeyToggle,
     /// PANIC — both layers to safe-scene, xfade=0.5, audio bypass on.
     Panic,
     /// Force-reload all scenes (dev key F5).
