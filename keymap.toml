@@ -277,3 +277,6 @@ action = "OpenMenu:Settings"
 [[binding]]
 key = "F5"
 action = "ReloadAllScenes"
+[[binding]]
+key = "F6"
+action = "OpenMenu:Looks"
