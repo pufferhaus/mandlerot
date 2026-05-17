@@ -856,6 +856,10 @@ fn main() -> anyhow::Result<()> {
             let bound_state = state.active_look_slot.map(|s| {
                 (s, looks.has_snapshot(s), looks.is_bound_active(s))
             });
+            let looks_view: [Option<(&str, &str)>; 8] = std::array::from_fn(|i| {
+                let key = (i + 1).to_string();
+                looks.file.slots.get(&key).map(|l| (l.name.as_str(), l.saved_at.as_str()))
+            });
             let rctx = RenderCtx {
                 scenes: &scene_names,
                 bindings: &state.slot_bindings,
@@ -867,7 +871,7 @@ fn main() -> anyhow::Result<()> {
                 video_status,
                 active_look_slot: state.active_look_slot,
                 bound_state,
-                looks_view: None,
+                looks_view: Some(&looks_view),
             };
             ui_stack.render_top(&rctx)
         } else {
