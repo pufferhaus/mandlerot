@@ -132,7 +132,7 @@ impl Pipeline {
         let quad_vao = create_quad_vao(&gl)?;
         let audio_history_texture = create_audio_history_texture(&gl);
         let video_texture = create_video_texture(&gl);
-        let postfx = PostFx::new(gl.clone(), width, height)?;
+        let postfx = PostFx::new(gl.clone(), width, height, pi_gen)?;
         // One-time GL state setup that holds for the lifetime of the
         // process: bind the unit-2 audio history texture so it's always
         // there for scenes to sample, the unit-3 video texture (same
