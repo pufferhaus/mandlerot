@@ -82,6 +82,7 @@ pub enum Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuKind {
     Settings,
+    Looks,
 }
 
 #[cfg(test)]

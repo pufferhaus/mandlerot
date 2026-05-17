@@ -113,6 +113,7 @@ fn parse_action_label(label: &str) -> Result<ActionTemplate> {
     if let Some(rest) = label.strip_prefix("OpenMenu:") {
         let kind = match rest {
             "Settings" => MenuKind::Settings,
+            "Looks" => MenuKind::Looks,
             other => return Err(Error::Backend(format!("unknown menu: {other}"))),
         };
         return Ok(ActionTemplate::Static(Action::OpenMenu(kind)));

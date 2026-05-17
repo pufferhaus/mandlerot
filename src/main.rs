@@ -742,6 +742,7 @@ fn main() -> anyhow::Result<()> {
                         MenuKind::Settings => ui_stack.open(Box::new(
                             mandlerot::ui::screens::SettingsScreen::new(),
                         )),
+                        MenuKind::Looks => {} // placeholder until Task 6
                     }
                     continue;
                 }
