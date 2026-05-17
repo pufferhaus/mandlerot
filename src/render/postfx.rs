@@ -78,7 +78,9 @@ pub struct PostFxPass {
     pub meta: SceneMeta,
     pub fragment_body: String,
     pub source_path: PathBuf,
-    pub program: glow::Program,
+    /// `None` for built-in passes (e.g. bloom_hq) that manage their own
+    /// programs internally. Always `Some` for user-authored GLSL passes.
+    pub program: Option<glow::Program>,
     pub params: ParamMap,
     pub enabled: bool,
     /// Cached uniform locations for `program`. Populated at link time.
@@ -204,7 +206,9 @@ impl PostFx {
         for idx in to_remove.into_iter().rev() {
             let p = self.passes.remove(idx);
             unsafe {
-                self.gl.delete_program(p.program);
+                if let Some(prog) = p.program {
+                    self.gl.delete_program(prog);
+                }
                 for tex in &p.lut_textures {
                     self.gl.delete_texture(*tex);
                 }
@@ -340,7 +344,9 @@ impl PostFx {
                 }
                 // Pass fully covers the target, so the clear is unnecessary —
                 // skipped to save fill on Pi 3B+ where bandwidth is precious.
-                self.gl.use_program(Some(pass.program));
+                self.gl.use_program(Some(
+                    pass.program.expect("user pass must have a compiled program"),
+                ));
                 self.gl
                     .bind_texture(glow::TEXTURE_2D, Some(self.pp[input_idx].texture));
                 // Sampler `u_input` was set to unit 0 at link time. We
@@ -425,12 +431,14 @@ impl PostFx {
         let program = compile_program(&self.gl, QUAD_VERT, &frag)?;
         let uniforms = resolve_postfx_uniforms(&self.gl, program);
         if let Some(existing) = self.passes.iter_mut().find(|p| p.name == name) {
-            unsafe { self.gl.delete_program(existing.program) };
+            if let Some(old) = existing.program {
+                unsafe { self.gl.delete_program(old) };
+            }
             existing.fragment_body = body.to_string();
             existing.params = ParamMap::from_scene(&meta);
             existing.meta = meta;
             existing.source_path = source_path;
-            existing.program = program;
+            existing.program = Some(program);
             existing.uniforms = uniforms;
             return Ok(());
         }
@@ -443,7 +451,7 @@ impl PostFx {
             meta,
             fragment_body: body.to_string(),
             source_path,
-            program,
+            program: Some(program),
             uniforms,
             lut_textures: Vec::new(),
         };
@@ -588,11 +596,13 @@ impl Drop for PostFx {
         // the Pipeline tears down on shutdown. (FBOs handle themselves.)
         for pass in &self.passes {
             unsafe {
+                if let Some(p) = pass.program {
+                    self.gl.delete_program(p);
+                }
                 for tex in &pass.lut_textures {
                     self.gl.delete_texture(*tex);
                 }
             }
-            unsafe { self.gl.delete_program(pass.program) };
         }
     }
 }
