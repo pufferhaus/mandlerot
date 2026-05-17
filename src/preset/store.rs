@@ -78,7 +78,7 @@ impl LookStore {
         let key = slot.to_string();
         let prior_postfx = self.file.slots.get(&key).and_then(|l| l.postfx.clone());
         let look = Look {
-            name: name.unwrap_or_else(|| format!("slot {slot}")),
+            name: name.unwrap_or_else(crate::preset::names::random_look_name),
             saved_at: now_iso8601(),
             scene_a: state.layer_a.scene_name.clone(),
             scene_b: state.layer_b.scene_name.clone(),
@@ -212,6 +212,17 @@ impl LookStore {
             return Ok(());
         }
         self.save_postfx_snapshot(slot, snap)
+    }
+
+    /// Remove slot N entirely. Errors if the slot has no Look. Flushes atomically.
+    pub fn delete(&mut self, slot: u8) -> Result<()> {
+        let key = slot.to_string();
+        if self.file.slots.remove(&key).is_none() {
+            return Err(Error::Backend(format!(
+                "look delete: slot {slot} has no saved Look"
+            )));
+        }
+        self.flush()
     }
 
     fn flush(&self) -> Result<()> {
@@ -661,5 +672,43 @@ mod tests {
         let live = snap_with("vignette", true, 0.5, true);
         store.after_postfx_mutation(Some(1), live).unwrap();
         assert!(store.file.slots.get("1").unwrap().postfx.is_none());
+    }
+
+    #[test]
+    fn delete_existing_slot_removes_entry_and_persists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("p.json");
+        let lib = library();
+        let s = state(&lib);
+        let mut store = LookStore::load_or_empty(&path).unwrap();
+        store.save(2, &s, Some("hold-me".into())).unwrap();
+        assert!(store.file.slots.contains_key("2"));
+        store.delete(2).unwrap();
+        assert!(!store.file.slots.contains_key("2"));
+        let reloaded = LookStore::load_or_empty(&path).unwrap();
+        assert!(!reloaded.file.slots.contains_key("2"));
+    }
+
+    #[test]
+    fn delete_empty_slot_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("p.json");
+        let mut store = LookStore::load_or_empty(&path).unwrap();
+        let err = store.delete(3);
+        assert!(err.is_err(), "delete on empty slot must error");
+    }
+
+    #[test]
+    fn save_with_no_name_uses_random_handle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("p.json");
+        let lib = library();
+        let s = state(&lib);
+        let mut store = LookStore::load_or_empty(&path).unwrap();
+        store.save(1, &s, None).unwrap();
+        let look = store.file.slots.get("1").unwrap();
+        assert_ne!(look.name, "slot 1");
+        let parts: Vec<&str> = look.name.split('-').collect();
+        assert_eq!(parts.len(), 2, "name was: {}", look.name);
     }
 }

@@ -10,9 +10,9 @@ _(none currently tracked)_
 
 ## Recently Shipped
 
+- **2026-05-17** Look workflow menu (29) — F6 → Looks screen lists all 8 slots with name + saved_at. Enter recalls (postfx restore via `ScreenResult::RecallLook` event drained by main loop — avoids borrow conflict with field borrows in ScreenCtx). `d` deletes (clears `active_look_slot` if it pointed there). Auto-name on `LookStore::save(None)` is now `<term>-<term>` from a 35-entry sci-fi pool (`src/preset/names.rs`) — replaces old `slot N`. `MenuKind::Looks` + `ScreenEvent` deferred pattern added. `RenderCtx.looks_view` built per frame so screen renders live name+saved_at. 287 tests green.
 - **2026-05-17** Chromakey output mode (27) — global toggle (key `K`) replaces background pixels with a key color (preset green/magenta/blue/yellow/custom) inside `shaders/blend.glsl` *before* the postfx chain so creative passes act on the keyed image. New `src/render/chromakey.rs` (state + atomic `chromakey.toml` persistence), new F4 → Chromakey screen with knobs + preset cycle + spill suppression, `KEY:G/M/B/Y/--/??` chip on the top bar. 12 scenes marked `keyable=true` per spec audit. 278 tests green. Spec at `.docs/ROADMAP-SPECS.md` § 27.
 - **2026-05-17** Post-FX per-Look (26d) — Look schema v2. `Look.postfx` optional `PostFxSnapshot { active, passes }` embedded in `looks.json`. Bind toggle (`b` in F4 → Post-FX) cycles no-snapshot → capture+active → paused → active+restore. Auto-sync writes via `LookStore::after_postfx_mutation` on every toggle/nudge/reset/hot-reload while bound+active. `LookStore::recall` takes an `apply_postfx` closure (decoupled from `render::postfx`); v1 files load with `postfx=None` and bump to v2 on next save. Status panel shows `*` on active+bound slot. 269 tests green. Spec at `docs/superpowers/specs/2026-05-16-postfx-per-look-design.md`.
-- **2026-05-16** Post-FX HQ Bloom (Pi 4+) + CRT overlay (26c) — new `bloom_hq` built-in pass (TOML-only meta, 4 stages dispatched in `PostFx::run`: downsample+bright → H-blur → V-blur → composite) over 2 new half-res FBOs, 4 shader programs cached at `PostFx::new`, gated `min_pi_gen = "Pi4"`. New `crt` user pass with scanlines + barrel curvature + aperture mask + corner darken + asymmetric phosphor decay (max-blend on `u_prev`). `PostFxPass.program` is now `Option<glow::Program>` so built-ins can carry `None`. Loader carve-out via `BUILTIN_POSTFX_PASSES`. 249 tests green. Spec at `docs/superpowers/specs/2026-05-16-postfx-bloom-hq-crt-design.md`.
 
 ## Design Notes
 
@@ -59,6 +59,7 @@ _(none currently tracked)_
 | 27 | Chromakey output mode (paint scene backgrounds with a key color for an external video mixer) | ✅ | `src/render/chromakey.rs`, `shaders/blend.glsl`, `src/render/pipeline.rs`, `src/ui/screens/chromakey.rs`, `src/status/{snapshot,compose}.rs` |
 | 28a | Pi-gen detect + per-scene caps (PiGen runtime detect, `min_pi_gen` filter, ignore per-scene `internal_resolution` on Pi 5, install-time `render_scale` per gen, skip composite overlay on Pi 5) | ✅ | `src/platform.rs` (new), `src/scene/{meta,library}.rs`, `src/render/pipeline.rs`, `src/ui/screens/scene_list.rs`, `deploy/install.sh`, `src/main.rs` |
 | 28  | Pi 4+ shader headroom — opt-in `#version 300 es` prelude variant (`glsl_version` scene field auto-marks `min_pi_gen = Pi4`) + real Gaussian bloom postfx tier. Blocked on Pi 4 + Pi 5 hardware in hand. | ☐ | `src/render/shader.rs`, `src/render/postfx.rs`, `postfx/bloom.{glsl,toml}`, `.docs/bench-pi{4,5}.md` |
+| 29 | Look workflow menu (F6 → recall + delete + sci-fi auto-name) | ✅ | `src/preset/{names,store}.rs`, `src/ui/screens/looks.rs`, `src/action.rs`, `keymap.toml` |
 
 Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on completion.
 
@@ -68,5 +69,4 @@ Active phase = first incomplete step. Mark `✅` and bump to Recently Shipped on
 - MPI3501 status panel: characterize the actual color response (R-channel weak, G→B bleed) and write a real Rgb565→fb conversion in `status::pi`. Current values in `status::theme` are empirical workarounds — amber is approximate, "dim" is just pure red because reducing R kills the hue.
 - Touch input on SPI panel (XPT2046 wired, software TBD)
 - MIDI / OSC control surface
-- Look workflow inside menu (rename slots, see saved-at, recall from menu)
 - More demoscene effects (see `EFFECTS-CATALOG.md::Where to look next` — Fire, Tetris rain, NORAD radar, Sandpile/Lenia, dashboard cluster, Lorenz attractor)

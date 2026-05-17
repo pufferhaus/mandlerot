@@ -424,6 +424,7 @@ mod tests {
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             bound_state: None,
+            looks_view: None,
         };
         s.render(&mut g, &rctx);
         // The placeholder for "no postfx" starts at row 4 col 3.
@@ -497,6 +498,7 @@ mod tests {
             video_status: crate::video::VideoStatus::NoDevice,
             active_look_slot: None,
             bound_state: None,
+            looks_view: None,
         };
         s.render(&mut g, &rctx);
         let row4: String = (3..30).map(|c| g.at(4, c).ch).collect();
