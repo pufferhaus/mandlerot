@@ -35,80 +35,7 @@ use super::shader::{assemble_postfx_fragment, QUAD_VERT};
 /// internal to the chain pipeline; no use putting it in `shaders/`.
 const BLIT_FRAG: &str = "#version 100\nprecision mediump float;\nuniform sampler2D u_input;\nvarying vec2 v_uv;\nvoid main(){ gl_FragColor = texture2D(u_input, v_uv); }\n";
 
-/// Pass names whose shader bodies are compiled from Rust-side constants
-/// rather than from a paired `.glsl` file. Loader skips the missing-.glsl
-/// warning for these; their TOML still ships under postfx/ to expose
-/// params + enabled state + min_pi_gen via the existing scene-meta path.
-const BUILTIN_POSTFX_PASSES: &[&str] = &["bloom_hq"];
 
-fn is_builtin_postfx(name: &str) -> bool {
-    BUILTIN_POSTFX_PASSES.contains(&name)
-}
-
-const BLOOM_DOWNSAMPLE_FRAG: &str = r#"
-vec3 bright_pass(vec3 c, float t) {
-    float lum = dot(c, vec3(0.299, 0.587, 0.114));
-    return c * max(lum - t, 0.0);
-}
-void main() {
-    vec2 px = 1.0 / u_resolution;
-    vec3 c = (
-        texture2D(u_input, v_uv + vec2(-0.5, -0.5) * px).rgb +
-        texture2D(u_input, v_uv + vec2( 0.5, -0.5) * px).rgb +
-        texture2D(u_input, v_uv + vec2(-0.5,  0.5) * px).rgb +
-        texture2D(u_input, v_uv + vec2( 0.5,  0.5) * px).rgb
-    ) * 0.25;
-    gl_FragColor = vec4(bright_pass(c, u_param0), 1.0);
-}
-"#;
-
-// Separable Gaussian, 5 linear-sampled taps (sigma ~= 1.5). The horizontal
-// and vertical bodies are identical except for the offset axis.
-const BLOOM_BLUR_H_FRAG: &str = r#"
-const float W0 = 0.227027;
-const float W1 = 0.316216;
-const float W2 = 0.070270;
-void main() {
-    vec2 px = 1.0 / u_resolution;
-    vec2 ofs1 = vec2(1.3846, 0.0) * px * u_param2;
-    vec2 ofs2 = vec2(3.2308, 0.0) * px * u_param2;
-    vec3 c = texture2D(u_input, v_uv).rgb * W0;
-    c += texture2D(u_input, v_uv + ofs1).rgb * W1;
-    c += texture2D(u_input, v_uv - ofs1).rgb * W1;
-    c += texture2D(u_input, v_uv + ofs2).rgb * W2;
-    c += texture2D(u_input, v_uv - ofs2).rgb * W2;
-    gl_FragColor = vec4(c, 1.0);
-}
-"#;
-
-const BLOOM_BLUR_V_FRAG: &str = r#"
-const float W0 = 0.227027;
-const float W1 = 0.316216;
-const float W2 = 0.070270;
-void main() {
-    vec2 px = 1.0 / u_resolution;
-    vec2 ofs1 = vec2(0.0, 1.3846) * px * u_param2;
-    vec2 ofs2 = vec2(0.0, 3.2308) * px * u_param2;
-    vec3 c = texture2D(u_input, v_uv).rgb * W0;
-    c += texture2D(u_input, v_uv + ofs1).rgb * W1;
-    c += texture2D(u_input, v_uv - ofs1).rgb * W1;
-    c += texture2D(u_input, v_uv + ofs2).rgb * W2;
-    c += texture2D(u_input, v_uv - ofs2).rgb * W2;
-    gl_FragColor = vec4(c, 1.0);
-}
-"#;
-
-// Composite stage: u_input is the original (pre-bloom) chain pixels;
-// u_bloom is the blurred half-res result, bilinearly upsampled by the
-// hardware (FBO defaults to LINEAR filtering per src/render/fbo.rs).
-const BLOOM_COMPOSITE_FRAG: &str = r#"
-uniform sampler2D u_bloom;
-void main() {
-    vec3 src   = texture2D(u_input, v_uv).rgb;
-    vec3 bloom = texture2D(u_bloom, v_uv).rgb;
-    gl_FragColor = vec4(src + bloom * u_param1, 1.0);
-}
-"#;
 
 /// Cached uniform locations for one post-FX pass. Resolved at link time
 /// (`resolve_postfx_uniforms`) so the hot `run` loop just does
@@ -120,13 +47,6 @@ struct PostFxUniforms {
     u_audio_mid: Option<glow::UniformLocation>,
     u_params: [Option<glow::UniformLocation>; 8],
     u_lut: Option<glow::UniformLocation>,
-}
-
-struct BloomHqPrograms {
-    downsample: glow::Program,
-    blur_h:     glow::Program,
-    blur_v:     glow::Program,
-    composite:  glow::Program,
 }
 
 fn resolve_postfx_uniforms(gl: &glow::Context, program: glow::Program) -> PostFxUniforms {
@@ -162,8 +82,7 @@ pub struct PostFxPass {
     pub meta: SceneMeta,
     pub fragment_body: String,
     pub source_path: PathBuf,
-    /// `None` for built-in passes (e.g. bloom_hq) that manage their own
-    /// programs internally. Always `Some` for user-authored GLSL passes.
+    /// Always `Some` for loaded GLSL passes.
     pub program: Option<glow::Program>,
     pub params: ParamMap,
     pub enabled: bool,
@@ -202,10 +121,6 @@ pub struct PostFx {
     /// loop to populate the StateSnapshot. Eliminates a per-frame `Vec<String>`
     /// allocation.
     summary_cache: String,
-    // Built-in pass GPU resources, allocated once at PostFx::new and
-    // shared across all bloom_hq invocations.
-    bloom_half: [Fbo; 2],
-    bloom_programs: BloomHqPrograms,
     /// Detected Pi generation. Passed in from the pipeline so `load_dir` can
     /// apply the same `min_pi_gen` filter as `SceneLibrary::load_dir_for_gen`.
     pi_gen: PiGen,
@@ -267,50 +182,6 @@ impl PostFx {
                 gl.uniform_1_i32(loc.as_ref(), 0);
             }
         }
-        // Half-res scratch for bloom_hq. Sized at chain/2 rounded up
-        // (max(1) guards a degenerate 1x1 chain).
-        let half_w = (width / 2).max(1);
-        let half_h = (height / 2).max(1);
-        let bloom_half = [
-            Fbo::new(gl.clone(), half_w, half_h)?,
-            Fbo::new(gl.clone(), half_w, half_h)?,
-        ];
-
-        // Compile the 4 built-in bloom_hq programs. Each uses the standard
-        // postfx prelude so u_input/u_resolution/u_param* are available.
-        let downsample = compile_program(
-            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_DOWNSAMPLE_FRAG),
-        )?;
-        let blur_h = compile_program(
-            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_BLUR_H_FRAG),
-        )?;
-        let blur_v = compile_program(
-            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_BLUR_V_FRAG),
-        )?;
-        let composite = compile_program(
-            &gl, QUAD_VERT, &assemble_postfx_fragment(BLOOM_COMPOSITE_FRAG),
-        )?;
-        // Pin samplers to their TUs once at link time.
-        unsafe {
-            for p in [downsample, blur_h, blur_v, composite] {
-                gl.use_program(Some(p));
-                if let Some(loc) = gl.get_uniform_location(p, "u_input") {
-                    gl.uniform_1_i32(Some(&loc), 0);
-                }
-            }
-            // Composite also reads u_bloom on TU5.
-            gl.use_program(Some(composite));
-            if let Some(loc) = gl.get_uniform_location(composite, "u_bloom") {
-                gl.uniform_1_i32(Some(&loc), 5);
-            }
-        }
-        let bloom_programs = BloomHqPrograms {
-            downsample,
-            blur_h,
-            blur_v,
-            composite,
-        };
-
         Ok(Self {
             gl,
             width,
@@ -322,8 +193,6 @@ impl PostFx {
             blit_program,
             passes: Vec::new(),
             summary_cache: String::new(),
-            bloom_half,
-            bloom_programs,
             pi_gen,
         })
     }
@@ -339,9 +208,6 @@ impl PostFx {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            // Two acceptable kinds:
-            //   1. user pass — paired .glsl + .toml
-            //   2. built-in pass — .toml only (name must be in BUILTIN_POSTFX_PASSES)
             let ext = path.extension().and_then(|s| s.to_str());
             let stem = match path.file_stem().and_then(|s| s.to_str()) {
                 Some(s) => s.to_string(),
@@ -349,29 +215,12 @@ impl PostFx {
             };
             match ext {
                 Some("glsl") => {
-                    if is_builtin_postfx(&stem) {
-                        tracing::warn!(
-                            "postfx/{}.glsl ignored — '{}' is a built-in pass; \
-                             remove the .glsl to use the built-in",
-                            stem, stem
-                        );
-                        continue;
-                    }
                     let meta_path = path.with_extension("toml");
                     if !meta_path.exists() {
                         tracing::warn!("postfx {} has no .toml metadata, skipping", path.display());
                         continue;
                     }
                     found.insert(stem, (Some(path), meta_path));
-                }
-                Some("toml") => {
-                    if is_builtin_postfx(&stem) {
-                        // Built-in: this .toml stands alone (no .glsl pair needed).
-                        // Don't override a previously-seen pairing — user .glsl + .toml
-                        // for the same stem would have already populated `found`.
-                        found.entry(stem.clone()).or_insert((None, path));
-                    }
-                    // Non-builtin lone .toml: ignored (paired .glsl scan picks it up if present).
                 }
                 _ => {}
             }
@@ -398,7 +247,7 @@ impl PostFx {
                     let body = std::fs::read_to_string(glsl_path)?;
                     self.upsert(name, &body, meta, toml_path.clone())
                 } else {
-                    self.upsert_builtin(name, meta, toml_path.clone())
+                    Ok(())
                 }
             })() {
                 Ok(()) => {}
@@ -503,91 +352,6 @@ impl PostFx {
         self.refresh_summary();
     }
 
-    /// Built-in 4-stage half-res bloom dispatch. Called from `run()` when
-    /// it encounters a pass named "bloom_hq". Associated function (not
-    /// method) so it can borrow individual PostFx fields disjointly
-    /// alongside the iter borrow on `self.passes`.
-    ///
-    /// Stages:
-    ///   1. downsample + bright_pass: src_texture(full) -> bloom_half[0] (half)
-    ///   2. blur_H:                   bloom_half[0]     -> bloom_half[1]
-    ///   3. blur_V:                   bloom_half[1]     -> bloom_half[0]
-    ///   4. composite: src_texture(full) + u_bloom(half upsample) -> dst_fbo
-    #[allow(clippy::too_many_arguments)]
-    fn dispatch_bloom_hq(
-        gl: &glow::Context,
-        bloom_half: &[Fbo; 2],
-        bloom_programs: &BloomHqPrograms,
-        src_texture: glow::Texture,
-        dst_fbo: &Fbo,
-        full_w: u32,
-        full_h: u32,
-        slots: [f32; 9],
-    ) {
-        let half_w = bloom_half[0].width;
-        let half_h = bloom_half[0].height;
-        let threshold = slots[0];
-        let intensity = slots[1];
-        let radius    = slots[2];
-
-        unsafe fn set_f32(gl: &glow::Context, program: glow::Program, name: &str, value: f32) {
-            if let Some(loc) = gl.get_uniform_location(program, name) {
-                gl.uniform_1_f32(Some(&loc), value);
-            }
-        }
-        unsafe fn set_vec2(gl: &glow::Context, program: glow::Program, name: &str, x: f32, y: f32) {
-            if let Some(loc) = gl.get_uniform_location(program, name) {
-                gl.uniform_2_f32(Some(&loc), x, y);
-            }
-        }
-
-        unsafe {
-            // --- Stage 1: downsample + bright_pass into bloom_half[0] ---
-            bloom_half[0].bind();   // also sets viewport to half-res
-            gl.use_program(Some(bloom_programs.downsample));
-            gl.active_texture(glow::TEXTURE0);
-            gl.bind_texture(glow::TEXTURE_2D, Some(src_texture));
-            // u_resolution = full-res so 1.0 / u_resolution gives source pixel step.
-            set_vec2(gl, bloom_programs.downsample, "u_resolution", full_w as f32, full_h as f32);
-            set_f32(gl, bloom_programs.downsample, "u_param0", threshold);
-            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
-
-            // --- Stage 2: horizontal blur, bloom_half[0] -> bloom_half[1] ---
-            bloom_half[1].bind();
-            gl.use_program(Some(bloom_programs.blur_h));
-            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[0].texture));
-            // u_resolution = half-res so 1.0 / u_resolution gives a half-res pixel step.
-            set_vec2(gl, bloom_programs.blur_h, "u_resolution", half_w as f32, half_h as f32);
-            set_f32(gl, bloom_programs.blur_h, "u_param2", radius);
-            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
-
-            // --- Stage 3: vertical blur, bloom_half[1] -> bloom_half[0] ---
-            bloom_half[0].bind();
-            gl.use_program(Some(bloom_programs.blur_v));
-            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[1].texture));
-            set_vec2(gl, bloom_programs.blur_v, "u_resolution", half_w as f32, half_h as f32);
-            set_f32(gl, bloom_programs.blur_v, "u_param2", radius);
-            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
-
-            // --- Stage 4: composite into the next chain fbo ---
-            dst_fbo.bind();   // restores viewport to full-res (Fbo::bind sets viewport)
-            gl.use_program(Some(bloom_programs.composite));
-            gl.active_texture(glow::TEXTURE5);
-            gl.bind_texture(glow::TEXTURE_2D, Some(bloom_half[0].texture));
-            gl.active_texture(glow::TEXTURE0);
-            gl.bind_texture(glow::TEXTURE_2D, Some(src_texture));
-            set_vec2(gl, bloom_programs.composite, "u_resolution", full_w as f32, full_h as f32);
-            set_f32(gl, bloom_programs.composite, "u_param1", intensity);
-            gl.draw_arrays(glow::TRIANGLES, 0, VERTEX_COUNT);
-
-            // Unbind TU5 + restore TU0 active so non-bloom_hq passes that follow
-            // continue to write to TU0 via `bind_texture` (the chain's convention).
-            gl.active_texture(glow::TEXTURE5);
-            gl.bind_texture(glow::TEXTURE_2D, None);
-            gl.active_texture(glow::TEXTURE0);
-        }
-    }
-
     /// Walk the enabled passes. The pipeline must have just written the
     /// blend output into `input_framebuffer()`. The last enabled pass
     /// targets the default framebuffer (`default_fb_w` × `default_fb_h`).
@@ -634,28 +398,6 @@ impl PostFx {
         for pass in self.passes.iter().filter(|p| is_renderable(p)) {
             seen += 1;
             let is_last = seen == enabled_count;
-            if pass.name == "bloom_hq" {
-                let slots = pass.params.effective_slot_values(&state.audio_bands, state.audio_bypass);
-                let input_idx = self.input_idx;
-                let next_idx = 1 - input_idx;
-                let dst_fbo = if is_last {
-                    &self.feedback[next_feedback]
-                } else {
-                    &self.pp[next_idx]
-                };
-                Self::dispatch_bloom_hq(
-                    &self.gl,
-                    &self.bloom_half,
-                    &self.bloom_programs,
-                    self.pp[input_idx].texture,
-                    dst_fbo,
-                    self.width,
-                    self.height,
-                    slots,
-                );
-                self.input_idx = next_idx;
-                continue;
-            }
             let input_idx = self.input_idx;
             let next_idx = 1 - input_idx;
             // Pre-filter guarantees lut_textures is non-empty when name == "lut",
@@ -788,43 +530,6 @@ impl PostFx {
             source_path,
             program: Some(program),
             uniforms,
-            lut_textures: Vec::new(),
-        };
-        self.passes.push(pass);
-        self.refresh_summary();
-        Ok(())
-    }
-
-    /// Built-in passes (e.g. `bloom_hq`) have no user shader. Their
-    /// meta + params come from disk, but the program is None and run()
-    /// dispatches them via a hardcoded code path.
-    fn upsert_builtin(&mut self, name: &str, meta: SceneMeta, source_path: PathBuf) -> Result<()> {
-        if let Some(existing) = self.passes.iter_mut().find(|p| p.name == name) {
-            // If this stem was previously a user pass (Some(program)), the user
-            // shader is being demoted to built-in via hot-reload. Free the orphaned
-            // GL handle before clobbering the slot.
-            if let Some(old) = existing.program.take() {
-                unsafe { self.gl.delete_program(old) };
-            }
-            existing.fragment_body = String::new();
-            existing.params = ParamMap::from_scene(&meta);
-            existing.meta = meta;
-            existing.source_path = source_path;
-            existing.program = None;
-            return Ok(());
-        }
-        let pass = PostFxPass {
-            name: name.to_string(),
-            enabled: meta.enabled_by_default,
-            params: ParamMap::from_scene(&meta),
-            meta,
-            fragment_body: String::new(),
-            source_path,
-            program: None,
-            // Built-ins never read pass.uniforms at render time, but the
-            // field must be present. Resolve against blit_program (always
-            // valid). Wasted lookups, but only on initial load.
-            uniforms: resolve_postfx_uniforms(&self.gl, self.blit_program),
             lut_textures: Vec::new(),
         };
         self.passes.push(pass);
@@ -1055,12 +760,6 @@ impl Drop for PostFx {
                 }
             }
         }
-        unsafe {
-            self.gl.delete_program(self.bloom_programs.downsample);
-            self.gl.delete_program(self.bloom_programs.blur_h);
-            self.gl.delete_program(self.bloom_programs.blur_v);
-            self.gl.delete_program(self.bloom_programs.composite);
-        }
     }
 }
 
@@ -1128,10 +827,10 @@ mod tests {
 
     #[test]
     fn ships_postfx_pass_pairs_on_disk() {
-        // Each entry: (name, has_glsl) — built-ins ship TOML only.
+        // Each entry: (name, has_glsl)
         let entries: &[(&str, bool)] = &[
             ("bloom",      true),
-            ("bloom_hq",   false),   // built-in: meta only
+            ("bloom_hq",   true),
             ("chromatic",  true),
             ("crt",        true),
             ("dither",     true),
@@ -1148,8 +847,6 @@ mod tests {
             let toml = glsl.with_extension("toml");
             if *has_glsl {
                 assert!(glsl.exists(), "missing {}", glsl.display());
-            } else {
-                assert!(!glsl.exists(), "built-in {} must NOT have a .glsl pair", name);
             }
             assert!(toml.exists(), "missing {}", toml.display());
             let s = std::fs::read_to_string(&toml).unwrap();
@@ -1197,15 +894,15 @@ mod tests {
 
         assert_eq!(names_first, names_second, "postfx/ contents must be stable between scans");
         assert!(names_first.contains(&"lut".to_string()), "lut pass must be present");
-        assert_eq!(names_first.len(), 9, "9 user-shader postfx passes (bloom_hq is built-in, TOML-only)");
+        assert_eq!(names_first.len(), 10, "10 user-shader postfx passes");
         let bloom_hq_toml = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("postfx")
             .join("bloom_hq.toml");
-        assert!(bloom_hq_toml.exists(), "built-in bloom_hq.toml must ship");
+        assert!(bloom_hq_toml.exists(), "bloom_hq.toml must ship");
         let bloom_hq_glsl = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("postfx")
             .join("bloom_hq.glsl");
-        assert!(!bloom_hq_glsl.exists(), "built-in bloom_hq must NOT have a .glsl pair");
+        assert!(bloom_hq_glsl.exists(), "bloom_hq.glsl must ship");
     }
 
     #[test]
