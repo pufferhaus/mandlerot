@@ -14,7 +14,7 @@ use crate::state::SharedState;
 use super::fbo::Fbo;
 use super::postfx::PostFx;
 use super::quad::{QUAD_POSITIONS, VERTEX_COUNT};
-use super::shader::{assemble_scene_fragment, BLEND_FRAG, QUAD_VERT};
+use super::shader::{assemble_scene_fragment, GlslVersion, BLEND_FRAG, QUAD_VERT};
 
 /// Cached uniform locations for one scene program. Resolving each location
 /// at link time and storing the handle drops the per-frame
@@ -334,7 +334,7 @@ impl Pipeline {
     /// Compile (or recompile) a scene's program. On failure, returns the GL
     /// info-log without modifying registered programs.
     pub fn upsert_scene(&mut self, name: &str, scene: &LoadedScene) -> Result<()> {
-        let frag = assemble_scene_fragment(&scene.fragment_body);
+        let frag = assemble_scene_fragment(&scene.fragment_body, GlslVersion::Es100);
         let new_prog = compile_program(&self.gl, QUAD_VERT, &frag)?;
         let cached = resolve_scene_uniforms(&self.gl, new_prog);
         // Sampler bindings never change at runtime — set them once here and

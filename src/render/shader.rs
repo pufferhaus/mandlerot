@@ -1,6 +1,14 @@
 //! Shader source assembly. Pure string operations — no GL calls.
 
 pub const PRELUDE: &str = include_str!("../../shaders/prelude.glsl");
+pub const PRELUDE_300ES: &str = include_str!("../../shaders/prelude_300es.glsl");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlslVersion {
+    #[default]
+    Es100,
+    Es300,
+}
 pub const POSTFX_PRELUDE: &str = include_str!("../../shaders/postfx_prelude.glsl");
 pub const QUAD_VERT: &str = include_str!("../../shaders/quad.vert");
 pub const BLEND_FRAG: &str = include_str!("../../shaders/blend.glsl");
@@ -16,10 +24,14 @@ void main() {
 "#;
 
 /// Combine the prelude with a user scene fragment shader body.
-pub fn assemble_scene_fragment(user_body: &str) -> String {
-    let mut s = String::with_capacity(PRELUDE.len() + user_body.len() + 1);
-    s.push_str(PRELUDE);
-    if !PRELUDE.ends_with('\n') {
+pub fn assemble_scene_fragment(user_body: &str, version: GlslVersion) -> String {
+    let prelude = match version {
+        GlslVersion::Es100 => PRELUDE,
+        GlslVersion::Es300 => PRELUDE_300ES,
+    };
+    let mut s = String::with_capacity(prelude.len() + user_body.len() + 1);
+    s.push_str(prelude);
+    if !prelude.ends_with('\n') {
         s.push('\n');
     }
     s.push_str(user_body);
@@ -60,8 +72,18 @@ mod tests {
     #[test]
     fn assembled_scene_starts_with_version() {
         let body = "void main() { gl_FragColor = vec4(1.0); }";
-        let s = assemble_scene_fragment(body);
+        let s = assemble_scene_fragment(body, GlslVersion::Es100);
         assert!(s.starts_with("#version 100"));
+        assert!(s.contains(body));
+    }
+
+    #[test]
+    fn assembled_scene_300es_starts_with_version_300() {
+        let body = "void main() { fragColor = vec4(1.0); }";
+        let s = assemble_scene_fragment(body, GlslVersion::Es300);
+        assert!(s.starts_with("#version 300 es"));
+        assert!(s.contains("out vec4 fragColor;"));
+        assert!(s.contains("in vec2 v_uv;"));
         assert!(s.contains(body));
     }
 
@@ -69,7 +91,7 @@ mod tests {
     fn safe_scene_uses_uniforms_from_prelude() {
         // Ensure baked-in safe_scene compiles when assembled (textually checked here;
         // GL compile happens in pipeline tests).
-        let s = assemble_scene_fragment(SAFE_SCENE);
+        let s = assemble_scene_fragment(SAFE_SCENE, GlslVersion::Es100);
         assert!(s.contains("u_time"));
     }
 
