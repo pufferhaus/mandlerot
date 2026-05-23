@@ -301,6 +301,7 @@ mod tests {
                 meta: a,
                 fragment_body: "void main() {}".into(),
                 source_path: PathBuf::from("inline"),
+                is_hq: false,
             },
         );
         let b = SceneMeta::parse(
@@ -314,6 +315,7 @@ mod tests {
                 meta: b,
                 fragment_body: "void main() {}".into(),
                 source_path: PathBuf::from("inline"),
+                is_hq: false,
             },
         );
         lib

@@ -452,6 +452,7 @@ mod tests {
             meta: meta_a,
             fragment_body: "void main() {}".into(),
             source_path: std::path::PathBuf::from("inline"),
+            is_hq: false,
         });
         let meta_b = SceneMeta::parse(
             "name = \"b\"\n[[params]]\nslot = 0\nname = \"y\"\nmin = 0.0\nmax = 1.0\ndefault = 0.5\n",
@@ -461,6 +462,7 @@ mod tests {
             meta: meta_b,
             fragment_body: "void main() {}".into(),
             source_path: std::path::PathBuf::from("inline"),
+            is_hq: false,
         });
         let state = SharedState::from_initial(&lib, "a", "b", 0.0, BlendMode::Mix).unwrap();
         let mut store = LookStore::load_or_empty(&path).unwrap();

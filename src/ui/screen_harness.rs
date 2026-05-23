@@ -84,6 +84,7 @@ fn build_lib() -> SceneLibrary {
                 meta,
                 fragment_body: "void main() {}".into(),
                 source_path: PathBuf::from("inline"),
+                is_hq: false,
             },
         );
     }

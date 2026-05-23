@@ -334,7 +334,8 @@ impl Pipeline {
     /// Compile (or recompile) a scene's program. On failure, returns the GL
     /// info-log without modifying registered programs.
     pub fn upsert_scene(&mut self, name: &str, scene: &LoadedScene) -> Result<()> {
-        let frag = assemble_scene_fragment(&scene.fragment_body, GlslVersion::Es100);
+        let version = if scene.is_hq { GlslVersion::Es300 } else { GlslVersion::Es100 };
+        let frag = assemble_scene_fragment(&scene.fragment_body, version);
         let new_prog = compile_program(&self.gl, QUAD_VERT, &frag)?;
         let cached = resolve_scene_uniforms(&self.gl, new_prog);
         // Sampler bindings never change at runtime — set them once here and
@@ -1013,6 +1014,7 @@ default = 0.0
             meta: SceneMeta::parse(&meta_str, "inline").unwrap(),
             fragment_body: body.to_string(),
             source_path: std::path::PathBuf::from("inline"),
+            is_hq: false,
         }
     }
 

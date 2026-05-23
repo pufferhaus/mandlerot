@@ -277,6 +277,7 @@ mod tests_plan3 {
                 meta,
                 fragment_body: "void main() { gl_FragColor = vec4(1.0); }".into(),
                 source_path: std::path::PathBuf::from("inline"),
+                is_hq: false,
             },
         );
         lib
@@ -325,6 +326,7 @@ mod tests_plan2 {
                 meta,
                 fragment_body: "void main() { gl_FragColor = vec4(1.0); }".into(),
                 source_path: std::path::PathBuf::from("inline"),
+                is_hq: false,
             },
         );
         lib

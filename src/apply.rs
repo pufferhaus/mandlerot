@@ -288,6 +288,7 @@ mod tests {
                     meta,
                     fragment_body: "void main() {}".into(),
                     source_path: std::path::PathBuf::from("inline"),
+                    is_hq: false,
                 },
             );
         }

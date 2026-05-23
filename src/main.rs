@@ -1085,6 +1085,7 @@ fn handle_reload(
         meta,
         fragment_body: body,
         source_path: glsl_path,
+        is_hq: false,
     };
     library.upsert(&stem, scene.clone());
     match pipeline.upsert_scene(&stem, &scene) {

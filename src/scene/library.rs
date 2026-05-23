@@ -13,6 +13,7 @@ pub struct LoadedScene {
     pub meta: SceneMeta,
     pub fragment_body: String,
     pub source_path: PathBuf,
+    pub is_hq: bool,
 }
 
 /// In-memory registry of all scenes found in a directory.
@@ -68,12 +69,22 @@ impl SceneLibrary {
                     continue;
                 }
             }
+            // Probe for an HQ variant: `foo.hq.glsl` alongside `foo.glsl`.
+            let hq_path = path.with_file_name(format!("{}.hq.glsl", stem));
+            let (fragment_body, is_hq) = if detected >= PiGen::Pi4 && hq_path.exists() {
+                let hq_body = std::fs::read_to_string(&hq_path)?;
+                tracing::debug!("scene {}: loaded HQ variant ({:?})", stem, hq_path);
+                (hq_body, true)
+            } else {
+                (body, false)
+            };
             lib.scenes.insert(
                 stem,
                 LoadedScene {
                     meta,
-                    fragment_body: body,
-                    source_path: path,
+                    fragment_body,
+                    source_path: if is_hq { hq_path } else { path },
+                    is_hq,
                 },
             );
         }
@@ -121,6 +132,7 @@ impl SceneLibrary {
                 meta: safe_meta,
                 fragment_body: crate::render::shader::SAFE_SCENE.to_string(),
                 source_path: PathBuf::from("<baked>"),
+                is_hq: false,
             },
         );
 
@@ -135,6 +147,7 @@ impl SceneLibrary {
                 meta: video_meta,
                 fragment_body: crate::render::shader::VIDEO_SCENE.to_string(),
                 source_path: PathBuf::from("<baked>"),
+                is_hq: false,
             },
         );
     }
@@ -207,6 +220,53 @@ mod tests {
         let lib_dev = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Unknown).unwrap();
         assert!(lib_dev.get("future").is_some());
         assert_eq!(lib_dev.filtered_count(), 0);
+    }
+
+    #[test]
+    fn hq_variant_loaded_on_pi4_plus() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("mystic.glsl"),
+            "void main() { gl_FragColor = vec4(1.0); }",
+        ).unwrap();
+        std::fs::write(
+            tmp.path().join("mystic.toml"),
+            "name = \"mystic\"\n",
+        ).unwrap();
+        std::fs::write(
+            tmp.path().join("mystic.hq.glsl"),
+            "void main() { fragColor = vec4(1.0); }",
+        ).unwrap();
+
+        let lib3 = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi3).unwrap();
+        let s3 = lib3.require("mystic").unwrap();
+        assert!(!s3.is_hq);
+        assert!(s3.fragment_body.contains("gl_FragColor"));
+
+        let lib4 = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi4).unwrap();
+        let s4 = lib4.require("mystic").unwrap();
+        assert!(s4.is_hq);
+        assert!(s4.fragment_body.contains("fragColor"));
+
+        let libu = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Unknown).unwrap();
+        let su = libu.require("mystic").unwrap();
+        assert!(su.is_hq);
+    }
+
+    #[test]
+    fn hq_variant_not_loaded_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("plain.glsl"),
+            "void main() { gl_FragColor = vec4(1.0); }",
+        ).unwrap();
+        std::fs::write(
+            tmp.path().join("plain.toml"),
+            "name = \"plain\"\n",
+        ).unwrap();
+        let lib = SceneLibrary::load_dir_for_gen(tmp.path(), PiGen::Pi4).unwrap();
+        let s = lib.require("plain").unwrap();
+        assert!(!s.is_hq);
     }
 
     #[test]
