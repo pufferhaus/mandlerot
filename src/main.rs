@@ -392,7 +392,8 @@ fn main() -> anyhow::Result<()> {
             p.enabled = false;
         }
         tracing::info!(
-            "benchmark: {} scenes, {} frames/run, postfx passes={}, xfade_ref={}",
+            "benchmark: platform={} scenes={} frames/run={} postfx_passes={} xfade_ref={}",
+            pi_gen.as_str(),
             names.len(),
             frames,
             postfx_names.len(),
