@@ -582,7 +582,7 @@ fn main() -> anyhow::Result<()> {
         // Hot-reload
         let mut scenes_dirty = false;
         while let Some(evt) = watcher.try_recv() {
-            handle_reload(evt, &cli.scenes, &mut library, &mut pipeline);
+            handle_reload(evt, &cli.scenes, &mut library, &mut pipeline, pi_gen);
             scenes_dirty = true;
         }
         if scenes_dirty {
@@ -1043,19 +1043,40 @@ fn handle_reload(
     scenes_dir: &std::path::Path,
     library: &mut SceneLibrary,
     pipeline: &mut Pipeline,
+    pi_gen: mandlerot::platform::PiGen,
 ) {
-    let stem = match &evt {
+    let raw_stem = match &evt {
         ReloadEvent::SceneTouched { stem } | ReloadEvent::SceneRemoved { stem } => stem.clone(),
         ReloadEvent::PostFxTouched { .. } | ReloadEvent::PostFxRemoved { .. } => return,
     };
     if matches!(evt, ReloadEvent::SceneRemoved { .. }) {
         return;
     }
-    let glsl_path = scenes_dir.join(format!("{stem}.glsl"));
-    let toml_path = scenes_dir.join(format!("{stem}.toml"));
-    if !glsl_path.exists() || !toml_path.exists() {
+    // `foo.hq.glsl` has file_stem "foo.hq". Strip the suffix so we always
+    // operate on the canonical base name and look up the single .toml.
+    let (stem, is_hq_file) = if let Some(base) = raw_stem.strip_suffix(".hq") {
+        (base.to_string(), true)
+    } else {
+        (raw_stem, false)
+    };
+    // HQ file changed but we're on Pi3 — that variant isn't in use, skip.
+    if is_hq_file && pi_gen < mandlerot::platform::PiGen::Pi4 {
         return;
     }
+    let toml_path = scenes_dir.join(format!("{stem}.toml"));
+    if !toml_path.exists() {
+        return;
+    }
+    // Mirror load_dir_for_gen: prefer the HQ variant on Pi4+.
+    let hq_path = scenes_dir.join(format!("{stem}.hq.glsl"));
+    let base_path = scenes_dir.join(format!("{stem}.glsl"));
+    let (glsl_path, is_hq) = if pi_gen >= mandlerot::platform::PiGen::Pi4 && hq_path.exists() {
+        (hq_path, true)
+    } else if base_path.exists() {
+        (base_path, false)
+    } else {
+        return;
+    };
     let body = match std::fs::read_to_string(&glsl_path) {
         Ok(s) => s,
         Err(e) => {
@@ -1086,7 +1107,7 @@ fn handle_reload(
         meta,
         fragment_body: body,
         source_path: glsl_path,
-        is_hq: false,
+        is_hq,
     };
     library.upsert(&stem, scene.clone());
     match pipeline.upsert_scene(&stem, &scene) {
